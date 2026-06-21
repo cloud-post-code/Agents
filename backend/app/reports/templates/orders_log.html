@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Orders Log{% endblock %}
+{% block date %}{{ date_from }} — {{ date_to }}{% endblock %}
+{% block content %}
+<table>
+  <thead><tr><th>Order ID</th><th>Date</th><th>Channel</th><th>Gross</th><th>Net</th><th>Status</th></tr></thead>
+  <tbody>
+  {% for order in data.orders %}
+  <tr>
+    <td>{{ order.id }}</td>
+    <td>{{ order.created_at }}</td>
+    <td>{{ order.channel }}</td>
+    <td>${{ order.gross_amount }}</td>
+    <td>${{ order.net_amount }}</td>
+    <td>{{ order.status }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="6" style="text-align:center;color:#999;">No orders in this period</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

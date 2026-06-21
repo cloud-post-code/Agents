@@ -19,6 +19,8 @@ class Report(Base):
     format: Mapped[str] = mapped_column(
         Enum("pdf", "html", name="report_format"), default="pdf", nullable=False
     )
+    template_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False, server_default="pending")
     storage_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)

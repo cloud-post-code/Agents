@@ -4,7 +4,7 @@ import redis.asyncio as aioredis
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1 import auth, calendar, health, inventory, notifications, tasks, ws_agent
+from app.api.v1 import auth, calendar, health, inventory, notifications, reports, tasks, ws_agent
 from app.core.config import settings
 from app.db.engine import engine
 
@@ -33,5 +33,6 @@ app.include_router(auth.router, prefix="/api/v1")
 app.include_router(tasks.router, prefix="/api/v1")
 app.include_router(calendar.router, prefix="/api/v1")
 app.include_router(inventory.router, prefix="/api/v1")
+app.include_router(reports.router, prefix="/api/v1")
 app.include_router(notifications.router)  # Uses full paths defined in router
 app.include_router(ws_agent.router)  # WebSocket routes don't use /api/v1 prefix
