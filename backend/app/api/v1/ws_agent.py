@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re as _re
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -9,7 +10,6 @@ from typing import Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from jose import JWTError
 from sqlalchemy import select, text
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.agents.base import ArtisanAgent
@@ -20,12 +20,18 @@ from app.models.agent import AgentMessage, AgentSession
 
 router = APIRouter(tags=["ws-agent"])
 
-# Number of recent messages loaded into the LLM context window
 CONTEXT_WINDOW_MESSAGES = 50
+
+_BASE64_PATTERN = _re.compile(r'data:[^;]+;base64,[A-Za-z0-9+/=]{100,}', _re.DOTALL)
+
+
+def _strip_base64(s: str) -> str:
+    return _BASE64_PATTERN.sub('[image]', s)
 
 
 def _make_session() -> AsyncSession:
     engine = create_async_engine(settings.database_url, echo=False, pool_pre_ping=True)
+    from sqlalchemy.ext.asyncio import async_sessionmaker
     factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
     return factory()
 
@@ -44,10 +50,7 @@ async def _authenticate_ws(websocket: WebSocket) -> Optional[dict]:
         return None
 
 
-async def _get_or_create_session(
-    db: AsyncSession, tenant_id: uuid.UUID, role: str
-) -> AgentSession:
-    """Return the single persistent session for this (tenant, role), creating it if needed."""
+async def _get_or_create_session(db: AsyncSession, tenant_id: uuid.UUID, role: str) -> AgentSession:
     result = await db.execute(
         select(AgentSession).where(
             AgentSession.tenant_id == tenant_id,
@@ -67,21 +70,7 @@ async def _get_or_create_session(
     return session
 
 
-import re as _re
-
-_BASE64_PATTERN = _re.compile(r'data:[^;]+;base64,[A-Za-z0-9+/=]{100,}', _re.DOTALL)
-
-
-def _strip_base64(text: str) -> str:
-    """Replace any embedded base64 data URIs with a short placeholder."""
-    return _BASE64_PATTERN.sub('[image data removed]', text)
-
-
-async def _load_context_window(
-    db: AsyncSession, session_id: uuid.UUID
-) -> list[dict]:
-    """Load the last CONTEXT_WINDOW_MESSAGES messages, oldest-first, for LLM context.
-    Base64 data URIs are stripped to prevent context overflow."""
+async def _load_context_window(db: AsyncSession, session_id: uuid.UUID) -> list[dict]:
     result = await db.execute(
         select(AgentMessage)
         .where(AgentMessage.session_id == session_id)
@@ -91,6 +80,53 @@ async def _load_context_window(
     )
     msgs = list(reversed(result.scalars().all()))
     return [{"role": m.role, "content": _strip_base64(m.content or "")} for m in msgs]
+
+
+async def _handle_image_upload(
+    image_url: str,
+    filename: str,
+    tenant_id_str: str,
+    db: AsyncSession,
+    websocket: WebSocket,
+) -> dict:
+    """
+    Call vision AI to extract product info from the image, emit a confirm_product card,
+    and return the card payload so it can be persisted. Bypasses the LLM entirely.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    try:
+        from app.agents.base import ArtisanAgent
+        agent = ArtisanAgent("product_manager")
+        result = await agent._execute_tool(
+            "ingest_product_from_image",
+            {"image_url": image_url, "save": False},
+            tenant_id=tenant_id_str,
+            user_id=None,
+            db=db,
+        )
+    except Exception as exc:
+        logger.error(f"[image_upload] vision extraction failed: {exc}")
+        result = {
+            "status": "extracted",
+            "name": filename.replace("_", " ").replace("-", " ").rsplit(".", 1)[0].title(),
+            "description": "",
+            "variants": [],
+            "image_url": image_url,
+        }
+
+    card_payload = {
+        "surface": "confirm_product",
+        "props": {
+            "image_url": image_url,
+            "name": result.get("name", ""),
+            "description": result.get("description", ""),
+            "variants": result.get("variants", []),
+        },
+    }
+
+    await websocket.send_text(json.dumps({"type": "a2ui", "payload": card_payload}))
+    return card_payload
 
 
 @router.websocket("/ws/agent/{role}/chat")
@@ -128,16 +164,12 @@ async def agent_chat(websocket: WebSocket, role: str):
     try:
         await db.execute(text(f"SET app.tenant_id = '{tenant_id_str}'"))
 
-        # Get or create the ONE persistent session for this (tenant, role)
         ag_session = await _get_or_create_session(db, tenant_id, role)
         session_id = ag_session.id
 
-        # Tell the frontend which session is active
         await websocket.send_text(json.dumps({"type": "session_id", "value": str(session_id)}))
 
-        # Load sliding context window for LLM
         conversation_history = await _load_context_window(db, session_id)
-
         agent = ArtisanAgent(role)
 
         while True:
@@ -153,48 +185,70 @@ async def agent_chat(websocket: WebSocket, role: str):
                 continue
 
             user_content = _strip_base64(data.get("content", ""))
-
-            # If a file was attached, build a clear prompt the agent can act on directly
             file_meta = data.get("file")
-            if file_meta:
-                file_url = file_meta.get("url", "")
-                file_type = file_meta.get("type", "file")
-                filename = file_meta.get("filename", "")
-                if file_type == "image":
-                    user_content = (
-                        f"{user_content}\n\n"
-                        f"[Image uploaded: {filename}]\n"
-                        f"Image URL: {file_url}\n"
-                        f"Call ingest_product_from_image with image_url='{file_url}'. "
-                        f"Ask the user for price, quantity, and unique_id before calling the tool."
-                    )
-                elif file_type == "csv":
-                    user_content = (
-                        f"{user_content}\n\n"
-                        f"[CSV uploaded: {filename}]\n"
-                        f"File URL: {file_url}\n"
-                        f"Call ingest_products_from_csv with csv_url='{file_url}'."
-                    )
+            card_events: list[dict] = []
 
-            # Persist user message
-            user_msg = AgentMessage(
-                session_id=session_id,
-                tenant_id=tenant_id,
-                role="user",
-                content=user_content,
-            )
-            db.add(user_msg)
+            # --- Image upload: bypass LLM, call vision directly ---
+            if file_meta and file_meta.get("type") == "image":
+                image_url = file_meta.get("url", "")
+                filename = file_meta.get("filename", "image")
+
+                # Persist user message (clean display text only)
+                display_text = user_content or f"📎 {filename}"
+                db.add(AgentMessage(
+                    session_id=session_id, tenant_id=tenant_id,
+                    role="user", content=display_text,
+                ))
+                await db.commit()
+
+                # Stream a short acknowledgement token
+                ack = "Here's what I see — fill in the price and quantity to save it."
+                await websocket.send_text(json.dumps({"type": "token", "content": ack}))
+
+                # Call vision AI and emit confirm_product card
+                card_payload = await _handle_image_upload(
+                    image_url, filename, tenant_id_str, db, websocket
+                )
+                card_events.append({"type": "a2ui", "payload": card_payload})
+
+                # Persist assistant ack + card
+                db.add(AgentMessage(
+                    session_id=session_id, tenant_id=tenant_id,
+                    role="assistant", content=ack,
+                ))
+                db.add(AgentMessage(
+                    session_id=session_id, tenant_id=tenant_id,
+                    role="card", content=json.dumps({"type": "a2ui", "payload": card_payload}),
+                ))
+                ag_session.updated_at = datetime.now(timezone.utc)
+                db.add(ag_session)
+                await db.commit()
+
+                conversation_history.append({"role": "user", "content": display_text})
+                conversation_history.append({"role": "assistant", "content": ack})
+                if len(conversation_history) > CONTEXT_WINDOW_MESSAGES:
+                    conversation_history = conversation_history[-CONTEXT_WINDOW_MESSAGES:]
+
+                await websocket.send_text(json.dumps({"type": "done"}))
+                continue
+
+            # --- CSV upload: tell agent about it cleanly ---
+            if file_meta and file_meta.get("type") == "csv":
+                csv_url = file_meta.get("url", "")
+                filename = file_meta.get("filename", "file.csv")
+                user_content = f"{user_content}\n[CSV file: {filename} — URL: {csv_url}]".strip()
+
+            # --- Normal text message: run through LLM ---
+            db.add(AgentMessage(
+                session_id=session_id, tenant_id=tenant_id,
+                role="user", content=user_content,
+            ))
             await db.commit()
 
-            # Stream agent events
             full_response = ""
-            card_events: list[dict] = []  # task_created / a2ui events to persist
             async for event in agent.run(
-                user_content,
-                conversation_history,
-                tenant_id=tenant_id_str,
-                user_id=user_id,
-                db=db,
+                user_content, conversation_history,
+                tenant_id=tenant_id_str, user_id=user_id, db=db,
             ):
                 if event.type == "token":
                     full_response += event.content
@@ -206,31 +260,19 @@ async def agent_chat(websocket: WebSocket, role: str):
                     await websocket.send_text(json.dumps({"type": "a2ui", "payload": event.payload}))
                     card_events.append({"type": "a2ui", "payload": event.payload})
 
-            # Persist assistant text message
-            asst_msg = AgentMessage(
-                session_id=session_id,
-                tenant_id=tenant_id,
-                role="assistant",
-                content=full_response,
-            )
-            db.add(asst_msg)
-
-            # Persist each card event as its own message row so history reloads them
+            db.add(AgentMessage(
+                session_id=session_id, tenant_id=tenant_id,
+                role="assistant", content=full_response,
+            ))
             for card in card_events:
-                card_msg = AgentMessage(
-                    session_id=session_id,
-                    tenant_id=tenant_id,
-                    role="card",
-                    content=json.dumps(card),
-                )
-                db.add(card_msg)
-
-            # Touch updated_at on the session so recency is trackable
+                db.add(AgentMessage(
+                    session_id=session_id, tenant_id=tenant_id,
+                    role="card", content=json.dumps(card),
+                ))
             ag_session.updated_at = datetime.now(timezone.utc)
             db.add(ag_session)
             await db.commit()
 
-            # Update in-memory sliding window
             conversation_history.append({"role": "user", "content": user_content})
             conversation_history.append({"role": "assistant", "content": full_response})
             if len(conversation_history) > CONTEXT_WINDOW_MESSAGES:
