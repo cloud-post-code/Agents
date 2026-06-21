@@ -10,6 +10,7 @@ import { SearchProductCard } from "@/components/a2ui/surfaces/SearchProductCard"
 import { VariantCard } from "@/components/a2ui/surfaces/VariantCard";
 import { RemoveProductCard } from "@/components/a2ui/surfaces/RemoveProductCard";
 import { ProductImagesCard } from "@/components/a2ui/surfaces/ProductImagesCard";
+import { ConfirmProductCard } from "@/components/a2ui/surfaces/ConfirmProductCard";
 
 type MessageKind = "user" | "assistant" | "task_created" | "a2ui" | "card";
 
@@ -65,6 +66,7 @@ function A2UICard({ payload }: { payload: Record<string, unknown> }) {
   if (surface === "product_variants") return <VariantCard {...(props as unknown as Parameters<typeof VariantCard>[0])} />;
   if (surface === "remove_product") return <RemoveProductCard {...(props as unknown as Parameters<typeof RemoveProductCard>[0])} />;
   if (surface === "product_images") return <ProductImagesCard {...(props as unknown as Parameters<typeof ProductImagesCard>[0])} />;
+  if (surface === "confirm_product") return <ConfirmProductCard {...(props as unknown as Parameters<typeof ConfirmProductCard>[0])} />;
 
   // Generic fallback — show field labels + values in plain English, no raw JSON
   const entries = Object.entries(props).filter(([, v]) => v !== undefined && v !== null);
