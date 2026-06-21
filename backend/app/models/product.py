@@ -21,6 +21,11 @@ class Product(Base):
     cost: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
     stock_qty: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     reorder_point: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
+    
+    # Image storage
+    image_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    image_data: Mapped[str | None] = mapped_column(Text, nullable=True)  # base64 for small images
+    
     extra_data: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
     embedding: Mapped[list | None] = mapped_column(Vector(1536), nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

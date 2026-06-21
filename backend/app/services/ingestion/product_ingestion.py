@@ -40,6 +40,13 @@ class ProductIngestionService:
         Returns:
             List of created product dicts
         """
+        # Convert image to base64 if it's bytes
+        import base64
+        if isinstance(image_data, bytes):
+            image_base64 = base64.b64encode(image_data).decode('utf-8')
+        else:
+            image_base64 = image_data
+        
         # Extract product info from image using vision AI
         product_info = await self._extract_from_image(image_data)
 
@@ -55,6 +62,7 @@ class ProductIngestionService:
                 "sku": user_input.get("sku"),
                 "tags": item.get("tags", []),
                 "variants": item.get("variants", []),
+                "image_data": image_base64,  # Store the image
             }
             products_to_create.append(product_data)
 
@@ -276,6 +284,8 @@ class ProductIngestionService:
             stock_qty=product_data.get("stock_qty", 0),
             sku=product_data.get("sku"),
             description=enriched_description,
+            image_url=product_data.get("image_url"),  # External URL if provided
+            image_data=product_data.get("image_data"),  # Base64 image data
             extra_data={
                 "unique_id": product_data["unique_id"],
                 "tags": tags,
@@ -306,6 +316,8 @@ class ProductIngestionService:
             "tags": tags,
             "price": float(product.price) if product.price else None,
             "stock_qty": product.stock_qty,
+            "image_url": product.image_url,
+            "image_data": product.image_data,  # Return for display
         }
 
     async def _enrich_description(self, description: str, name: str) -> str:
