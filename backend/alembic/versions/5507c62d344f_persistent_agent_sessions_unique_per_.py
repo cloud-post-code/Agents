@@ -28,8 +28,28 @@ def upgrade() -> None:
         ),
     )
 
-    # Deduplicate existing rows before adding the unique constraint:
-    # keep the earliest session per (tenant_id, agent_role), delete the rest.
+    # Deduplicate existing rows before adding the unique constraint.
+    # Keep the earliest session per (tenant_id, agent_role); move all messages
+    # from duplicate sessions to the keeper, then delete the duplicates.
+    op.execute("""
+        WITH keepers AS (
+            SELECT DISTINCT ON (tenant_id, agent_role) id AS keeper_id,
+                   tenant_id, agent_role
+            FROM agent_sessions
+            ORDER BY tenant_id, agent_role, created_at ASC
+        ),
+        duplicates AS (
+            SELECT s.id AS dup_id, k.keeper_id
+            FROM agent_sessions s
+            JOIN keepers k ON k.tenant_id = s.tenant_id AND k.agent_role = s.agent_role
+            WHERE s.id != k.keeper_id
+        )
+        UPDATE agent_messages m
+        SET session_id = d.keeper_id
+        FROM duplicates d
+        WHERE m.session_id = d.dup_id
+    """)
+
     op.execute("""
         DELETE FROM agent_sessions
         WHERE id NOT IN (
