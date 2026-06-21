@@ -52,7 +52,7 @@ async def get_agent_history(
     if session is None:
         return HistoryOut(session_id="", role=role, messages=[])
 
-    # Load last `limit` messages oldest-first for display
+    # Load last `limit` messages oldest-first for display (user, assistant, card)
     msgs_result = await db.execute(
         select(AgentMessage)
         .where(AgentMessage.session_id == session.id)
@@ -67,10 +67,11 @@ async def get_agent_history(
         messages=[
             MessageOut(
                 id=str(m.id),
-                role=m.role,
+                role=m.role,  # "user" | "assistant" | "card"
                 content=m.content or "",
                 created_at=m.created_at.isoformat(),
             )
             for m in messages
+            if m.role in ("user", "assistant", "card")
         ],
     )

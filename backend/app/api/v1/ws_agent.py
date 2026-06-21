@@ -154,6 +154,7 @@ async def agent_chat(websocket: WebSocket, role: str):
 
             # Stream agent events
             full_response = ""
+            card_events: list[dict] = []  # task_created / a2ui events to persist
             async for event in agent.run(
                 user_content,
                 conversation_history,
@@ -166,10 +167,12 @@ async def agent_chat(websocket: WebSocket, role: str):
                     await websocket.send_text(json.dumps({"type": "token", "content": event.content}))
                 elif event.type == "task_created":
                     await websocket.send_text(json.dumps({"type": "task_created", "payload": event.payload}))
+                    card_events.append({"type": "task_created", "payload": event.payload})
                 elif event.type == "a2ui":
                     await websocket.send_text(json.dumps({"type": "a2ui", "payload": event.payload}))
+                    card_events.append({"type": "a2ui", "payload": event.payload})
 
-            # Persist assistant message
+            # Persist assistant text message
             asst_msg = AgentMessage(
                 session_id=session_id,
                 tenant_id=tenant_id,
@@ -177,6 +180,16 @@ async def agent_chat(websocket: WebSocket, role: str):
                 content=full_response,
             )
             db.add(asst_msg)
+
+            # Persist each card event as its own message row so history reloads them
+            for card in card_events:
+                card_msg = AgentMessage(
+                    session_id=session_id,
+                    tenant_id=tenant_id,
+                    role="card",
+                    content=json.dumps(card),
+                )
+                db.add(card_msg)
 
             # Touch updated_at on the session so recency is trackable
             ag_session.updated_at = datetime.now(timezone.utc)

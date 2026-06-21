@@ -5,7 +5,7 @@ import { AgentConfig } from "@/lib/agents";
 import { useAuth } from "@/hooks/useAuth";
 import { apiFetch, getApiBase } from "@/lib/api";
 
-type MessageKind = "user" | "assistant" | "task_created" | "a2ui";
+type MessageKind = "user" | "assistant" | "task_created" | "a2ui" | "card";
 
 interface Message {
   role: MessageKind;
@@ -105,13 +105,30 @@ export function AgentShell({ agent }: AgentShellProps) {
     )
       .then((data) => {
         const loaded: Message[] = data.messages
-          .filter((m) => m.role === "user" || m.role === "assistant")
-          .map((m) => ({
-            id: m.id,
-            role: m.role as MessageKind,
-            content: m.content,
-            created_at: m.created_at,
-          }));
+          .filter((m) => m.role === "user" || m.role === "assistant" || m.role === "card")
+          .map((m) => {
+            if (m.role === "card") {
+              try {
+                const card = JSON.parse(m.content) as { type: string; payload: Record<string, unknown> };
+                return {
+                  id: m.id,
+                  role: card.type as MessageKind,
+                  content: "",
+                  payload: card.payload,
+                  created_at: m.created_at,
+                };
+              } catch {
+                return null;
+              }
+            }
+            return {
+              id: m.id,
+              role: m.role as MessageKind,
+              content: m.content,
+              created_at: m.created_at,
+            };
+          })
+          .filter((m): m is Message => m !== null);
         setMessages(loaded);
         setHistoryLoaded(true);
       })
