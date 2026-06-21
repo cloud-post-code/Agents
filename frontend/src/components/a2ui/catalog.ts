@@ -15,9 +15,9 @@ export const AGENT_CATALOG: Record<AgentRole, Set<string>> = {
   product_manager: new Set([
     "PriceTag", "CurrencyAmount", "MarginPill", "CostBreakdown", "StockBadge", "StatusPill",
     "PriorityFlag", "DueBadge", "LeadTimePill", "DateLabel", "SeasonTag", "QuantityCount",
-    "ScoreBadge", "SupplierTag", "AgentBadge", "ProductRow", "VariantRow", "MaterialRow",
-    "SupplierRow", "TaskRow", "ForecastRow", "Table", "GroupedTable", "StatRow",
-    "TimelineList", "SummaryPanel",
+    "ScoreBadge", "SupplierTag", "AgentBadge", "ProductRow", "ProductCard", "ProductGrid",
+    "VariantRow", "MaterialRow", "SupplierRow", "TaskRow", "ForecastRow", "Table", 
+    "GroupedTable", "StatRow", "TimelineList", "SummaryPanel",
   ]),
   marketer: new Set([
     "PriceTag", "CurrencyAmount", "PercentChange", "TrendArrow", "StatusPill", "RatingStars",

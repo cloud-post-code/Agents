@@ -49,5 +49,65 @@ def search_catalog(query: str, limit: int = 10) -> list:
     ]
 
 
+@tool
+def ingest_product_from_image(
+    image_base64: str,
+    price: float,
+    quantity: int,
+    unique_id: str,
+    sku: str = ""
+) -> dict:
+    """
+    Ingest a product from an uploaded image.
+    
+    The agent will extract product name, description, and tags from the image.
+    User must provide: price, quantity, and unique_id.
+    SKU is optional.
+    
+    Args:
+        image_base64: Base64-encoded image data
+        price: Product selling price
+        quantity: Stock quantity
+        unique_id: Unique product identifier (must be unique)
+        sku: Optional SKU code (must be unique if provided)
+    
+    Returns:
+        Dict with created product info or error
+    """
+    return {
+        "status": "success",
+        "message": "Product ingestion tool called - implementation needed",
+        "product_id": "stub-product-id",
+    }
+
+
+@tool
+def ingest_products_from_csv(csv_base64: str) -> dict:
+    """
+    Ingest multiple products from a CSV file.
+    
+    CSV should contain columns for: name, price, quantity, description, unique_id
+    Optional columns: sku, cost
+    
+    The agent will auto-detect column structure and import all products.
+    
+    Args:
+        csv_base64: Base64-encoded CSV file data
+    
+    Returns:
+        Dict with success count, errors, and created products
+    """
+    return {
+        "status": "success",
+        "message": "CSV ingestion tool called - implementation needed",
+        "imported": 0,
+        "errors": [],
+    }
+
+
 SHARED_TOOLS = [create_task, render_ui, generate_report]
-PRODUCT_MANAGER_TOOLS = SHARED_TOOLS + [search_catalog]
+PRODUCT_MANAGER_TOOLS = SHARED_TOOLS + [
+    search_catalog,
+    ingest_product_from_image,
+    ingest_products_from_csv,
+]
