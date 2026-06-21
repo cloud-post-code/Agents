@@ -82,7 +82,7 @@ export function ConfirmProductCard(props: ConfirmProductCardProps) {
         <img
           src={props.image_url}
           alt={name || "Product image"}
-          className="w-full max-h-48 object-cover rounded-xl mb-3"
+          className="w-full object-contain max-h-72 bg-gray-50 rounded-xl mb-3"
         />
       )}
 
@@ -161,7 +161,16 @@ export function ConfirmProductCard(props: ConfirmProductCardProps) {
         </div>
 
         <div>
-          <label className="text-xs text-gray-500 mb-1 block">SKU (optional)</label>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs text-gray-500">SKU (optional)</label>
+            <button
+              type="button"
+              onClick={() => setSku(Math.random().toString(36).slice(2, 8).toUpperCase())}
+              className="text-xs text-blue-500 hover:text-blue-700 font-medium"
+            >
+              auto-generate
+            </button>
+          </div>
           <input
             className={fieldClass}
             value={sku}

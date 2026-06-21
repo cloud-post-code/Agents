@@ -11,6 +11,10 @@ import { VariantCard } from "@/components/a2ui/surfaces/VariantCard";
 import { RemoveProductCard } from "@/components/a2ui/surfaces/RemoveProductCard";
 import { ProductImagesCard } from "@/components/a2ui/surfaces/ProductImagesCard";
 import { ConfirmProductCard } from "@/components/a2ui/surfaces/ConfirmProductCard";
+import { MultiProductCard } from "@/components/a2ui/surfaces/MultiProductCard";
+import { VariantConfirmCard } from "@/components/a2ui/surfaces/VariantConfirmCard";
+import { ProductListCard } from "@/components/a2ui/surfaces/ProductListCard";
+import { DiscountCard } from "@/components/a2ui/surfaces/DiscountCard";
 
 type MessageKind = "user" | "assistant" | "task_created" | "a2ui" | "card";
 
@@ -79,6 +83,10 @@ function A2UICard({ payload }: { payload: Record<string, unknown> }) {
   if (surface === "remove_product") return <RemoveProductCard {...(props as unknown as Parameters<typeof RemoveProductCard>[0])} />;
   if (surface === "product_images") return <ProductImagesCard {...(props as unknown as Parameters<typeof ProductImagesCard>[0])} />;
   if (surface === "confirm_product") return <ConfirmProductCard {...(props as unknown as Parameters<typeof ConfirmProductCard>[0])} />;
+  if (surface === "multi_product") return <MultiProductCard {...(props as unknown as Parameters<typeof MultiProductCard>[0])} />;
+  if (surface === "variant_product") return <VariantConfirmCard {...(props as unknown as Parameters<typeof VariantConfirmCard>[0])} />;
+  if (surface === "product_list") return <ProductListCard {...(props as unknown as Parameters<typeof ProductListCard>[0])} />;
+  if (surface === "discount") return <DiscountCard {...(props as unknown as Parameters<typeof DiscountCard>[0])} />;
 
   // Generic fallback — render images as <img>, everything else as readable text
   const entries = Object.entries(props).filter(([, v]) => v !== undefined && v !== null);
@@ -150,7 +158,7 @@ export function AgentShell({ agent }: AgentShellProps) {
   const [streaming, setStreaming] = useState(false);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [attachedFile, setAttachedFile] = useState<AttachedFile | null>(null);
+  const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -282,30 +290,43 @@ export function AgentShell({ agent }: AgentShellProps) {
   }, [messages]);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !token) return;
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length || !token) return;
+
+    const remaining = 10 - attachedFiles.length;
+    const toUpload = files.slice(0, remaining);
+    if (files.length > remaining) {
+      setError(`Max 10 files. Only the first ${remaining} were added.`);
+    }
+
     setUploading(true);
-    setError(null);
+    setError((prev) => (files.length > remaining ? prev : null));
+    const apiBase = getApiBase();
+
     try {
-      const form = new FormData();
-      form.append("file", file);
-      const apiBase = getApiBase();
-      const res = await fetch(`${apiBase}/api/v1/agent/upload`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: form,
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || `Upload failed: ${res.status}`);
-      }
-      const data = await res.json() as { file_id: string; url: string; type: string; filename: string };
-      setAttachedFile({
-        fileId: data.file_id,
-        url: data.url,
-        type: data.type as "image" | "csv",
-        filename: data.filename,
-      });
+      const results = await Promise.all(
+        toUpload.map(async (file) => {
+          const form = new FormData();
+          form.append("file", file);
+          const res = await fetch(`${apiBase}/api/v1/agent/upload`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+            body: form,
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.detail || `Upload failed: ${res.status}`);
+          }
+          const data = await res.json() as { file_id: string; url: string; type: string; filename: string };
+          return {
+            fileId: data.file_id,
+            url: data.url,
+            type: data.type as "image" | "csv",
+            filename: data.filename,
+          } satisfies AttachedFile;
+        })
+      );
+      setAttachedFiles((prev) => [...prev, ...results]);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Upload failed");
     } finally {
@@ -316,16 +337,18 @@ export function AgentShell({ agent }: AgentShellProps) {
 
   const send = () => {
     const text = input.trim();
-    const hasFile = !!attachedFile;
-    if ((!text && !hasFile) || streaming || !wsRef.current || wsRef.current.readyState !== 1) return;
+    const hasFiles = attachedFiles.length > 0;
+    if ((!text && !hasFiles) || streaming || !wsRef.current || wsRef.current.readyState !== 1) return;
 
-    // Display: clean badge, no raw URLs or base64
-    const displayContent = attachedFile
-      ? `${text ? text + " " : ""}📎 ${attachedFile.filename}`
+    // Display: clean badges, no raw URLs or base64
+    const fileNames = attachedFiles.map((f) => `📎 ${f.filename}`).join(" ");
+    const displayContent = hasFiles
+      ? `${text ? text + " " : ""}${fileNames}`
       : text;
 
+    const filesToSend = [...attachedFiles];
     setInput("");
-    setAttachedFile(null);
+    setAttachedFiles([]);
     setError(null);
     pendingRef.current = "";
     setMessages((prev) => [...prev, { role: "user", content: displayContent, id: crypto.randomUUID() }]);
@@ -334,14 +357,14 @@ export function AgentShell({ agent }: AgentShellProps) {
     // Send file metadata separately from text so backend can build the right prompt
     wsRef.current.send(JSON.stringify({
       type: "message",
-      content: text || `Please process the attached ${attachedFile?.type ?? "file"}: ${attachedFile?.filename ?? ""}`,
-      ...(attachedFile ? {
-        file: {
-          url: attachedFile.url,
-          type: attachedFile.type,
-          filename: attachedFile.filename,
-          file_id: attachedFile.fileId,
-        }
+      content: text || `Please process the attached file${filesToSend.length > 1 ? "s" : ""}: ${filesToSend.map((f) => f.filename).join(", ")}`,
+      ...(hasFiles ? {
+        files: filesToSend.map((f) => ({
+          url: f.url,
+          type: f.type,
+          filename: f.filename,
+          file_id: f.fileId,
+        })),
       } : {}),
     }));
   };
@@ -473,18 +496,23 @@ export function AgentShell({ agent }: AgentShellProps) {
       </div>
 
       <div className="border-t p-3 bg-white">
-        {attachedFile && (
-          <div className="flex items-center gap-2 mb-2 px-1">
-            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
-              📎 {attachedFile.filename}
-              <button
-                onClick={() => setAttachedFile(null)}
-                className="ml-1 text-blue-500 hover:text-blue-700 font-bold"
-                aria-label="Remove attachment"
+        {attachedFiles.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-2 px-1">
+            {attachedFiles.map((f) => (
+              <span
+                key={f.fileId}
+                className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium flex items-center gap-1"
               >
-                ×
-              </button>
-            </span>
+                📎 {f.filename}
+                <button
+                  onClick={() => setAttachedFiles((prev) => prev.filter((x) => x.fileId !== f.fileId))}
+                  className="ml-1 text-blue-500 hover:text-blue-700 font-bold"
+                  aria-label={`Remove ${f.filename}`}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
           </div>
         )}
         <div className="flex gap-2">
@@ -493,14 +521,15 @@ export function AgentShell({ agent }: AgentShellProps) {
             type="file"
             accept="image/jpeg,image/png,image/webp,.csv,text/csv"
             className="hidden"
+            multiple
             onChange={handleFileChange}
           />
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            disabled={streaming || !connected || uploading}
+            disabled={streaming || !connected || uploading || attachedFiles.length >= 10}
             className="px-3 py-2 border rounded-xl text-gray-500 hover:text-blue-600 hover:border-blue-300 disabled:opacity-40 transition-colors text-sm"
-            title="Attach image or CSV"
+            title={attachedFiles.length >= 10 ? "Max 10 files" : "Attach image or CSV (up to 10)"}
           >
             {uploading ? "⏳" : "📎"}
           </button>
@@ -514,7 +543,7 @@ export function AgentShell({ agent }: AgentShellProps) {
           />
           <button
             onClick={send}
-            disabled={streaming || !connected || (!input.trim() && !attachedFile)}
+            disabled={streaming || !connected || (!input.trim() && attachedFiles.length === 0)}
             className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium disabled:opacity-40 hover:bg-blue-700 transition-colors"
           >
             {streaming ? "●●●" : "Send"}
