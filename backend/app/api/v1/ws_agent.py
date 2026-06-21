@@ -49,12 +49,27 @@ async def agent_chat(websocket: WebSocket, role: str):
         await websocket.close(code=4004)
         return
 
+    # Accept first so the client can send an auth message if token not in query params
+    await websocket.accept()
+
     payload = await _authenticate_ws(websocket)
     if not payload:
+        # Try reading first message for {type: "auth", token: "..."}
+        try:
+            raw = await websocket.receive_text()
+            data = json.loads(raw)
+            if data.get("type") == "auth" and data.get("token"):
+                try:
+                    payload = decode_token(data["token"])
+                except JWTError:
+                    payload = None
+        except Exception:
+            payload = None
+
+    if not payload:
+        await websocket.send_text(json.dumps({"type": "error", "message": "Unauthorized"}))
         await websocket.close(code=4001)
         return
-
-    await websocket.accept()
 
     tenant_id = payload.get("tenant_id")
     user_id = payload.get("sub")
