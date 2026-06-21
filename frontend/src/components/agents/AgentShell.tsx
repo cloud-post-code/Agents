@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { AgentConfig } from "@/lib/agents";
 import { useAuth } from "@/hooks/useAuth";
-import { getApiBase } from "@/lib/api";
+import { apiFetch, getApiBase } from "@/lib/api";
 
 type MessageKind = "user" | "assistant" | "task_created" | "a2ui";
 
@@ -12,6 +12,14 @@ interface Message {
   content: string;
   id: string;
   payload?: Record<string, unknown>;
+  created_at?: string;
+}
+
+interface HistoryMessage {
+  id: string;
+  role: string;
+  content: string;
+  created_at: string;
 }
 
 interface AgentShellProps {
@@ -58,9 +66,23 @@ function A2UICard({ payload }: { payload: Record<string, unknown> }) {
   );
 }
 
+function DateDivider({ date }: { date: string }) {
+  const label = new Date(date).toLocaleDateString("en-US", {
+    weekday: "long", month: "short", day: "numeric", year: "numeric",
+  });
+  return (
+    <div className="flex items-center gap-3 my-2">
+      <div className="flex-1 h-px bg-gray-200" />
+      <span className="text-xs text-gray-400">{label}</span>
+      <div className="flex-1 h-px bg-gray-200" />
+    </div>
+  );
+}
+
 export function AgentShell({ agent }: AgentShellProps) {
   const { token } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -74,8 +96,32 @@ export function AgentShell({ agent }: AgentShellProps) {
   tokenRef.current = token;
   roleRef.current = agent.role;
 
+  // Load full chat history on mount
   useEffect(() => {
     if (!token) return;
+    apiFetch<{ session_id: string; role: string; messages: HistoryMessage[] }>(
+      `/api/v1/agents/${agent.role}/history?limit=200`,
+      token
+    )
+      .then((data) => {
+        const loaded: Message[] = data.messages
+          .filter((m) => m.role === "user" || m.role === "assistant")
+          .map((m) => ({
+            id: m.id,
+            role: m.role as MessageKind,
+            content: m.content,
+            created_at: m.created_at,
+          }));
+        setMessages(loaded);
+        setHistoryLoaded(true);
+      })
+      .catch(() => setHistoryLoaded(true)); // fail open — show empty thread
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, agent.role]);
+
+  // Connect WebSocket after history is loaded
+  useEffect(() => {
+    if (!token || !historyLoaded) return;
 
     const base = getApiBase().replace(/^https/, "wss").replace(/^http/, "ws");
     const ws = new WebSocket(`${base}/ws/agent/${roleRef.current}/chat`);
@@ -96,6 +142,11 @@ export function AgentShell({ agent }: AgentShellProps) {
     ws.onmessage = (e) => {
       const data = JSON.parse(e.data);
 
+      if (data.type === "session_id") {
+        // session confirmed — nothing to show
+        return;
+      }
+
       if (data.type === "token") {
         pendingRef.current += data.content;
         setMessages((prev) => {
@@ -107,20 +158,16 @@ export function AgentShell({ agent }: AgentShellProps) {
         });
 
       } else if (data.type === "task_created") {
-        // Finalise the streaming text bubble first, then add task card
         setMessages((prev) => {
           const finalised = prev.map((m) =>
             m.id === "streaming" ? { ...m, id: crypto.randomUUID() } : m
           );
-          return [
-            ...finalised,
-            {
-              role: "task_created" as MessageKind,
-              content: "",
-              id: crypto.randomUUID(),
-              payload: data.payload ?? {},
-            },
-          ];
+          return [...finalised, {
+            role: "task_created" as MessageKind,
+            content: "",
+            id: crypto.randomUUID(),
+            payload: data.payload ?? {},
+          }];
         });
         pendingRef.current = "";
 
@@ -129,15 +176,12 @@ export function AgentShell({ agent }: AgentShellProps) {
           const finalised = prev.map((m) =>
             m.id === "streaming" ? { ...m, id: crypto.randomUUID() } : m
           );
-          return [
-            ...finalised,
-            {
-              role: "a2ui" as MessageKind,
-              content: "",
-              id: crypto.randomUUID(),
-              payload: data.payload ?? {},
-            },
-          ];
+          return [...finalised, {
+            role: "a2ui" as MessageKind,
+            content: "",
+            id: crypto.randomUUID(),
+            payload: data.payload ?? {},
+          }];
         });
         pendingRef.current = "";
 
@@ -157,8 +201,9 @@ export function AgentShell({ agent }: AgentShellProps) {
     wsRef.current = ws;
     return () => ws.close();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [!!token]);
+  }, [historyLoaded, !!token]);
 
+  // Scroll to bottom when new messages arrive
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -180,6 +225,68 @@ export function AgentShell({ agent }: AgentShellProps) {
   };
   const agentColor = colorMap[agent.color] || "bg-gray-600";
 
+  // Insert date dividers between messages from different days
+  const renderMessages = () => {
+    const nodes: React.ReactNode[] = [];
+    let lastDate = "";
+
+    messages.forEach((msg) => {
+      const msgDate = msg.created_at
+        ? new Date(msg.created_at).toDateString()
+        : "";
+      if (msgDate && msgDate !== lastDate) {
+        nodes.push(<DateDivider key={`div-${msgDate}`} date={msg.created_at!} />);
+        lastDate = msgDate;
+      }
+
+      if (msg.role === "task_created") {
+        nodes.push(
+          <div key={msg.id} className="flex justify-start">
+            <div className={`w-6 h-6 rounded-full ${agentColor} flex items-center justify-center text-white text-xs mr-2 mt-1 shrink-0`}>
+              {agent.name[0]}
+            </div>
+            <div className="max-w-[78%]">
+              <TaskCreatedCard payload={msg.payload ?? {}} />
+            </div>
+          </div>
+        );
+      } else if (msg.role === "a2ui") {
+        nodes.push(
+          <div key={msg.id} className="flex justify-start">
+            <div className={`w-6 h-6 rounded-full ${agentColor} flex items-center justify-center text-white text-xs mr-2 mt-1 shrink-0`}>
+              {agent.name[0]}
+            </div>
+            <div className="max-w-[78%]">
+              <A2UICard payload={msg.payload ?? {}} />
+            </div>
+          </div>
+        );
+      } else {
+        nodes.push(
+          <div key={msg.id} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+            {msg.role === "assistant" && (
+              <div className={`w-6 h-6 rounded-full ${agentColor} flex items-center justify-center text-white text-xs mr-2 mt-1 shrink-0`}>
+                {agent.name[0]}
+              </div>
+            )}
+            <div className={`max-w-[78%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap leading-relaxed ${
+              msg.role === "user"
+                ? "bg-blue-600 text-white rounded-tr-sm"
+                : "bg-white border shadow-sm rounded-tl-sm"
+            }`}>
+              {msg.content}
+              {msg.id === "streaming" && (
+                <span className="inline-block w-1.5 h-3.5 bg-gray-400 animate-pulse ml-1 rounded-sm align-middle" />
+              )}
+            </div>
+          </div>
+        );
+      }
+    });
+
+    return nodes;
+  };
+
   return (
     <div className="flex flex-col h-full">
       <div className="border-b p-4 flex items-center gap-3 bg-white">
@@ -196,63 +303,23 @@ export function AgentShell({ agent }: AgentShellProps) {
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
-        {messages.length === 0 && (
+        {!historyLoaded && (
+          <div className="flex items-center justify-center h-full">
+            <span className="text-sm text-gray-400 animate-pulse">Loading conversation...</span>
+          </div>
+        )}
+
+        {historyLoaded && messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center gap-2">
             <div className={`w-16 h-16 rounded-full ${agentColor} flex items-center justify-center text-white text-2xl font-bold`}>
               {agent.name[0]}
             </div>
-            <p className="text-gray-500 text-sm mt-2">Hi! I'm your {agent.name}.</p>
+            <p className="text-gray-500 text-sm mt-2">Hi! I&apos;m your {agent.name}.</p>
             <p className="text-gray-400 text-sm">{agent.description}</p>
           </div>
         )}
 
-        {messages.map((msg) => {
-          if (msg.role === "task_created") {
-            return (
-              <div key={msg.id} className="flex justify-start">
-                <div className={`w-6 h-6 rounded-full ${agentColor} flex items-center justify-center text-white text-xs mr-2 mt-1 shrink-0`}>
-                  {agent.name[0]}
-                </div>
-                <div className="max-w-[78%]">
-                  <TaskCreatedCard payload={msg.payload ?? {}} />
-                </div>
-              </div>
-            );
-          }
-
-          if (msg.role === "a2ui") {
-            return (
-              <div key={msg.id} className="flex justify-start">
-                <div className={`w-6 h-6 rounded-full ${agentColor} flex items-center justify-center text-white text-xs mr-2 mt-1 shrink-0`}>
-                  {agent.name[0]}
-                </div>
-                <div className="max-w-[78%]">
-                  <A2UICard payload={msg.payload ?? {}} />
-                </div>
-              </div>
-            );
-          }
-
-          return (
-            <div key={msg.id} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-              {msg.role === "assistant" && (
-                <div className={`w-6 h-6 rounded-full ${agentColor} flex items-center justify-center text-white text-xs mr-2 mt-1 shrink-0`}>
-                  {agent.name[0]}
-                </div>
-              )}
-              <div className={`max-w-[78%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap leading-relaxed ${
-                msg.role === "user"
-                  ? "bg-blue-600 text-white rounded-tr-sm"
-                  : "bg-white border shadow-sm rounded-tl-sm"
-              }`}>
-                {msg.content}
-                {msg.id === "streaming" && (
-                  <span className="inline-block w-1.5 h-3.5 bg-gray-400 animate-pulse ml-1 rounded-sm align-middle" />
-                )}
-              </div>
-            </div>
-          );
-        })}
+        {historyLoaded && renderMessages()}
 
         {error && <p className="text-center text-xs text-red-500">{error}</p>}
         <div ref={bottomRef} />

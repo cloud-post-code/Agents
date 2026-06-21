@@ -3,11 +3,13 @@ from __future__ import annotations
 
 import json
 import uuid
+from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from jose import JWTError
 from sqlalchemy import select, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.agents.base import ArtisanAgent
@@ -18,29 +20,65 @@ from app.models.agent import AgentMessage, AgentSession
 
 router = APIRouter(tags=["ws-agent"])
 
+# Number of recent messages loaded into the LLM context window
+CONTEXT_WINDOW_MESSAGES = 50
+
+
 def _make_session() -> AsyncSession:
-    """Create a fresh session using the currently configured database URL."""
     engine = create_async_engine(settings.database_url, echo=False, pool_pre_ping=True)
     factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
     return factory()
 
 
 async def _authenticate_ws(websocket: WebSocket) -> Optional[dict]:
-    """Extract and verify JWT from query param or header."""
     token = websocket.query_params.get("token")
     if not token:
         auth_header = websocket.headers.get("Authorization", "")
         if auth_header.startswith("Bearer "):
             token = auth_header[7:]
-
     if not token:
         return None
-
     try:
-        payload = decode_token(token)
-        return payload
+        return decode_token(token)
     except JWTError:
         return None
+
+
+async def _get_or_create_session(
+    db: AsyncSession, tenant_id: uuid.UUID, role: str
+) -> AgentSession:
+    """Return the single persistent session for this (tenant, role), creating it if needed."""
+    result = await db.execute(
+        select(AgentSession).where(
+            AgentSession.tenant_id == tenant_id,
+            AgentSession.agent_role == role,
+        )
+    )
+    session = result.scalar_one_or_none()
+    if session is None:
+        session = AgentSession(
+            tenant_id=tenant_id,
+            agent_role=role,
+            title=f"{role.replace('_', ' ').title()} thread",
+        )
+        db.add(session)
+        await db.commit()
+        await db.refresh(session)
+    return session
+
+
+async def _load_context_window(
+    db: AsyncSession, session_id: uuid.UUID
+) -> list[dict]:
+    """Load the last CONTEXT_WINDOW_MESSAGES messages, oldest-first, for LLM context."""
+    result = await db.execute(
+        select(AgentMessage)
+        .where(AgentMessage.session_id == session_id)
+        .order_by(AgentMessage.created_at.desc())
+        .limit(CONTEXT_WINDOW_MESSAGES)
+    )
+    msgs = list(reversed(result.scalars().all()))
+    return [{"role": m.role, "content": m.content or ""} for m in msgs]
 
 
 @router.websocket("/ws/agent/{role}/chat")
@@ -49,12 +87,10 @@ async def agent_chat(websocket: WebSocket, role: str):
         await websocket.close(code=4004)
         return
 
-    # Accept first so the client can send an auth message if token not in query params
     await websocket.accept()
 
     payload = await _authenticate_ws(websocket)
     if not payload:
-        # Try reading first message for {type: "auth", token: "..."}
         try:
             raw = await websocket.receive_text()
             data = json.loads(raw)
@@ -71,28 +107,24 @@ async def agent_chat(websocket: WebSocket, role: str):
         await websocket.close(code=4001)
         return
 
-    tenant_id = payload.get("tenant_id")
+    tenant_id_str = payload.get("tenant_id")
     user_id = payload.get("sub")
-    session_id_param = websocket.query_params.get("session_id")
+    tenant_id = uuid.UUID(tenant_id_str)
 
     db: AsyncSession = _make_session()
-    session_id: Optional[str] = None
-    conversation_history: list[dict] = []
 
     try:
-        await db.execute(text(f"SET app.tenant_id = '{tenant_id}'"))
+        await db.execute(text(f"SET app.tenant_id = '{tenant_id_str}'"))
 
-        # Load or create agent session
-        if session_id_param:
-            session_id = session_id_param
-            # Load history
-            result = await db.execute(
-                select(AgentMessage)
-                .where(AgentMessage.session_id == uuid.UUID(session_id))
-                .order_by(AgentMessage.created_at)
-            )
-            for msg in result.scalars().all():
-                conversation_history.append({"role": msg.role, "content": msg.content or ""})
+        # Get or create the ONE persistent session for this (tenant, role)
+        ag_session = await _get_or_create_session(db, tenant_id, role)
+        session_id = ag_session.id
+
+        # Tell the frontend which session is active
+        await websocket.send_text(json.dumps({"type": "session_id", "value": str(session_id)}))
+
+        # Load sliding context window for LLM
+        conversation_history = await _load_context_window(db, session_id)
 
         agent = ArtisanAgent(role)
 
@@ -110,34 +142,22 @@ async def agent_chat(websocket: WebSocket, role: str):
 
             user_content = data.get("content", "")
 
-            # Create session if first message
-            if session_id is None:
-                ag_session = AgentSession(
-                    tenant_id=uuid.UUID(tenant_id),
-                    agent_role=role,
-                    title=user_content[:60],
-                )
-                db.add(ag_session)
-                await db.flush()
-                session_id = str(ag_session.id)
-                await websocket.send_text(json.dumps({"type": "session_id", "value": session_id}))
-
             # Persist user message
             user_msg = AgentMessage(
-                session_id=uuid.UUID(session_id),
-                tenant_id=uuid.UUID(tenant_id),
+                session_id=session_id,
+                tenant_id=tenant_id,
                 role="user",
                 content=user_content,
             )
             db.add(user_msg)
             await db.commit()
 
-            # Stream agent events — tokens, tool results, a2ui surfaces
+            # Stream agent events
             full_response = ""
             async for event in agent.run(
                 user_content,
                 conversation_history,
-                tenant_id=tenant_id,
+                tenant_id=tenant_id_str,
                 user_id=user_id,
                 db=db,
             ):
@@ -148,21 +168,26 @@ async def agent_chat(websocket: WebSocket, role: str):
                     await websocket.send_text(json.dumps({"type": "task_created", "payload": event.payload}))
                 elif event.type == "a2ui":
                     await websocket.send_text(json.dumps({"type": "a2ui", "payload": event.payload}))
-                elif event.type == "done":
-                    pass  # sent explicitly below
 
             # Persist assistant message
             asst_msg = AgentMessage(
-                session_id=uuid.UUID(session_id),
-                tenant_id=uuid.UUID(tenant_id),
+                session_id=session_id,
+                tenant_id=tenant_id,
                 role="assistant",
                 content=full_response,
             )
             db.add(asst_msg)
+
+            # Touch updated_at on the session so recency is trackable
+            ag_session.updated_at = datetime.now(timezone.utc)
+            db.add(ag_session)
             await db.commit()
 
+            # Update in-memory sliding window
             conversation_history.append({"role": "user", "content": user_content})
             conversation_history.append({"role": "assistant", "content": full_response})
+            if len(conversation_history) > CONTEXT_WINDOW_MESSAGES:
+                conversation_history = conversation_history[-CONTEXT_WINDOW_MESSAGES:]
 
             await websocket.send_text(json.dumps({"type": "done"}))
 
