@@ -24,6 +24,75 @@ ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/jpg", "image/webp"}
 ALLOWED_CSV_TYPES = {"text/csv", "application/csv", "text/plain"}
 
 
+@router.post("")
+async def upload_file(
+    file: UploadFile = File(...),
+    session_id: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Unified upload endpoint for agent chat.
+
+    Accepts an image or CSV file and returns {file_id, url, type} that the
+    agent can reference in subsequent messages.
+    """
+    contents = await file.read()
+    file_id = str(uuid.uuid4())
+    content_type = file.content_type or ""
+
+    if content_type in ALLOWED_IMAGE_TYPES or (file.filename or "").lower().endswith(
+        (".jpg", ".jpeg", ".png", ".webp")
+    ):
+        if len(contents) > MAX_IMAGE_SIZE:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"Image too large. Maximum size: {MAX_IMAGE_SIZE // 1024 // 1024}MB",
+            )
+        image_base64 = base64.b64encode(contents).decode()
+        if session_id:
+            await _log_to_session(
+                db=db,
+                session_id=session_id,
+                tenant_id=current_user.tenant_id,
+                content=f"[Image uploaded: {file.filename}, {len(contents)} bytes]",
+            )
+        return {
+            "file_id": file_id,
+            "url": f"data:{content_type};base64,{image_base64}",
+            "type": "image",
+            "filename": file.filename,
+            "size": len(contents),
+        }
+
+    if content_type in ALLOWED_CSV_TYPES or (file.filename or "").lower().endswith(".csv"):
+        if len(contents) > MAX_CSV_SIZE:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"CSV too large. Maximum size: {MAX_CSV_SIZE // 1024 // 1024}MB",
+            )
+        csv_base64 = base64.b64encode(contents).decode()
+        if session_id:
+            await _log_to_session(
+                db=db,
+                session_id=session_id,
+                tenant_id=current_user.tenant_id,
+                content=f"[CSV uploaded: {file.filename}, {len(contents)} bytes]",
+            )
+        return {
+            "file_id": file_id,
+            "url": f"data:text/csv;base64,{csv_base64}",
+            "type": "csv",
+            "filename": file.filename,
+            "size": len(contents),
+        }
+
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Unsupported file type. Upload an image (JPEG, PNG, WebP) or a CSV file.",
+    )
+
+
 @router.post("/image")
 async def upload_image_for_ingestion(
     file: UploadFile = File(...),
