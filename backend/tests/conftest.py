@@ -143,6 +143,18 @@ async def ws_auth_headers(ws_client: AsyncClient) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
+@pytest_asyncio.fixture
+async def auth_headers_b(client: AsyncClient) -> dict:
+    """Register a second user (tenant B) and return Authorization headers."""
+    r = await client.post("/api/v1/auth/register", json={
+        "email": "tenant-b@test.com",
+        "password": "secret123",
+        "business_name": "Tenant B Shop",
+    })
+    token = r.json()["token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
 @dataclass
 class FakeTenant:
     id: uuid.UUID

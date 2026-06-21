@@ -49,7 +49,7 @@
     {
       "id": "06-a2ui-fragment-system",
       "title": "A2UI Fragment System",
-      "status": "pending",
+      "status": "passing",
       "priority": 6,
       "skill": "coding-frontend",
       "proof_command": "npx vitest run frontend/src/components/a2ui/",
