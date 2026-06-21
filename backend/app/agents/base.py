@@ -193,12 +193,26 @@ class ArtisanAgent:
         if tool_name == "search_catalog" and db is not None and tenant_id:
             from app.services.product_tools import search_catalog_impl
             try:
-                return await search_catalog_impl(
+                result = await search_catalog_impl(
                     db=db,
                     tenant_id=uuid.UUID(tenant_id),
                     query=args.get("query", ""),
                     limit=args.get("limit", 10),
                 )
+                # Always include a product_list surface hint so the agent
+                # can pass it directly to render_ui without reformatting
+                products = result.get("results", result) if isinstance(result, dict) else result
+                result_dict = result if isinstance(result, dict) else {"results": result, "count": len(result)}
+                result_dict["_product_list_surface"] = {
+                    "surface": "product_list",
+                    "props": {
+                        "products": products,
+                        "total": result_dict.get("count", len(products)),
+                        "page": 1,
+                        "per_page": 10,
+                    }
+                }
+                return result_dict
             except Exception as exc:
                 logger.error(f"[search_catalog] failed: {exc}")
                 return {"error": str(exc)}
