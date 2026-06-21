@@ -8,6 +8,13 @@ from app.core.config import settings
 from app.db.engine import Base
 import app.models.tenant  # noqa: F401
 import app.models.user    # noqa: F401
+import app.models.product  # noqa: F401
+import app.models.agent    # noqa: F401
+import app.models.task     # noqa: F401
+import app.models.report   # noqa: F401
+import app.models.calendar  # noqa: F401
+import app.models.notification  # noqa: F401
+import app.models.integration   # noqa: F401
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url_sync)

@@ -1,5 +1,6 @@
 import asyncio
 import os
+import uuid
 from dataclasses import dataclass
 from typing import AsyncGenerator
 
@@ -20,23 +21,31 @@ from app.main import app  # noqa: E402
 
 TEST_DB_URL = "postgresql+asyncpg://postgres:postgres@localhost:5434/artisan_test"
 
+# Tables to truncate between tests (ordered to respect FK constraints)
+TABLES_TO_CLEAN = [
+    "notifications", "task_approvals", "calendar_events",
+    "agent_messages", "reports", "tasks", "integrations",
+    "agent_sessions", "products", "users", "tenants",
+]
+
 
 @pytest_asyncio.fixture(scope="function")
-async def db_engine():
+async def db() -> AsyncGenerator[AsyncSession, None]:
+    """Function-scoped session using the pre-migrated test DB."""
     engine = create_async_engine(TEST_DB_URL, echo=False)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    yield engine
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-    await engine.dispose()
-
-
-@pytest_asyncio.fixture(scope="function")
-async def db(db_engine) -> AsyncGenerator[AsyncSession, None]:
-    session_factory = async_sessionmaker(db_engine, expire_on_commit=False, class_=AsyncSession)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
     async with session_factory() as session:
+        # Disable RLS for cleanup — use SET LOCAL to limit to this statement
+        await session.execute(text("SET LOCAL app.tenant_id = '00000000-0000-0000-0000-000000000000'"))
+        for t in TABLES_TO_CLEAN:
+            try:
+                await session.execute(text(f"TRUNCATE TABLE {t} RESTART IDENTITY CASCADE"))
+            except Exception:
+                await session.rollback()
+                break
+        await session.commit()
         yield session
+    await engine.dispose()
 
 
 @pytest_asyncio.fixture(scope="function")
@@ -70,3 +79,36 @@ async def registered_user(client: AsyncClient) -> RegisteredUser:
         "business_name": "Fixture Shop"
     })
     return RegisteredUser(email=email, raw_password=password)
+
+
+@dataclass
+class FakeTenant:
+    id: uuid.UUID
+
+
+@pytest_asyncio.fixture
+async def tenant_a(db: AsyncSession) -> FakeTenant:
+    tid = uuid.uuid4()
+    await db.execute(
+        text(
+            "INSERT INTO tenants (id, slug, display_name, plan_tier) "
+            "VALUES (:id, :slug, :name, 'starter')"
+        ),
+        {"id": str(tid), "slug": f"tenant-a-{tid}", "name": "Tenant A"},
+    )
+    await db.commit()
+    return FakeTenant(id=tid)
+
+
+@pytest_asyncio.fixture
+async def tenant_b(db: AsyncSession) -> FakeTenant:
+    tid = uuid.uuid4()
+    await db.execute(
+        text(
+            "INSERT INTO tenants (id, slug, display_name, plan_tier) "
+            "VALUES (:id, :slug, :name, 'starter')"
+        ),
+        {"id": str(tid), "slug": f"tenant-b-{tid}", "name": "Tenant B"},
+    )
+    await db.commit()
+    return FakeTenant(id=tid)
