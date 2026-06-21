@@ -5,7 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.v1 import admin_profile, agent_history, auth, calendar, health, inventory, notifications, reports, tasks, upload, ws_agent
+from app.api.v1 import admin_profile, agent_history, auth, calendar, discounts, health, inventory, notifications, reports, tasks, upload, ws_agent
 from app.core.config import settings
 from app.db.engine import engine
 
@@ -51,6 +51,7 @@ app.include_router(auth.router, prefix="/api/v1")
 app.include_router(tasks.router, prefix="/api/v1")
 app.include_router(calendar.router, prefix="/api/v1")
 app.include_router(inventory.router, prefix="/api/v1")
+app.include_router(discounts.router, prefix="/api/v1")
 app.include_router(reports.router, prefix="/api/v1")
 app.include_router(upload.router, prefix="/api/v1")  # File upload for agent chat
 app.include_router(notifications.router)  # Uses full paths defined in router

@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, Numeric, String, Text, func
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, Numeric, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -40,6 +40,7 @@ class Product(Base):
     image_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     image_data: Mapped[str | None] = mapped_column(Text, nullable=True)  # base64 for small images
     
+    weight_grams: Mapped[int | None] = mapped_column(Integer, nullable=True)
     extra_data: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
     embedding: Mapped[list | None] = mapped_column(Vector(1536), nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -80,3 +81,36 @@ class StockAdjustment(Base):
     delta: Mapped[int] = mapped_column(Integer, nullable=False)
     reason: Mapped[str] = mapped_column(String(256), default="manual", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ProductDiscount(Base):
+    __tablename__ = "product_discounts"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    product_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("products.id", ondelete="CASCADE"), nullable=True
+    )
+    discount_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    name: Mapped[str] = mapped_column(String(256), nullable=False)
+    # sale fields
+    sale_price_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sale_percent: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
+    # coupon fields
+    coupon_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    coupon_discount_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    coupon_discount_percent: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
+    max_uses: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    uses_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # bulk fields
+    bulk_min_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    bulk_discount_percent: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
+    bulk_discount_cents_per_unit: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # common
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
