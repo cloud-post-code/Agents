@@ -28,6 +28,7 @@ def _product_dict(p: Product, variants: list = None) -> dict:
         "cost": float(p.cost) if p.cost is not None else None,
         "stock_qty": p.stock_qty,
         "reorder_point": p.reorder_point,
+        "weight_grams": p.weight_grams,
         "metadata": p.extra_data,
         "created_at": p.created_at.isoformat() if p.created_at else None,
         "updated_at": p.updated_at.isoformat() if p.updated_at else None,
@@ -57,6 +58,7 @@ class CreateProductRequest(BaseModel):
     cost: Optional[float] = None
     stock_qty: int = 0
     reorder_point: int = 5
+    weight_grams: Optional[int] = None
 
 
 class UpdateProductRequest(BaseModel):
@@ -66,6 +68,7 @@ class UpdateProductRequest(BaseModel):
     price: Optional[float] = None
     cost: Optional[float] = None
     reorder_point: Optional[int] = None
+    weight_grams: Optional[int] = None
 
 
 class StockAdjustmentRequest(BaseModel):
@@ -116,6 +119,7 @@ async def create_product(
         cost=body.cost,
         stock_qty=body.stock_qty,
         reorder_point=body.reorder_point,
+        weight_grams=body.weight_grams,
     )
     db.add(product)
     await db.commit()

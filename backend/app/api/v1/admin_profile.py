@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +14,9 @@ from app.core.deps import get_current_user, get_db
 from app.models.user import User
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin-profile"])
+
+
+VALID_SHIPPING_METHODS = {"flat_rate", "weight_based", "free_threshold", "none"}
 
 
 class ProfileIn(BaseModel):
@@ -33,6 +36,7 @@ class ProfileIn(BaseModel):
     cancellation_policy: Optional[str] = None
     shipping_flat_rate_cents: Optional[int] = None
     shipping_free_threshold_cents: Optional[int] = None
+    shipping_method: Optional[str] = None
 
 
 class ProfileOut(BaseModel):
@@ -54,6 +58,7 @@ class ProfileOut(BaseModel):
     cancellation_policy: Optional[str]
     shipping_flat_rate_cents: Optional[int]
     shipping_free_threshold_cents: Optional[int]
+    shipping_method: Optional[str]
 
 
 def _row_to_dict(row) -> dict:
@@ -76,6 +81,7 @@ def _row_to_dict(row) -> dict:
         "cancellation_policy": row.cancellation_policy,
         "shipping_flat_rate_cents": row.shipping_flat_rate_cents,
         "shipping_free_threshold_cents": row.shipping_free_threshold_cents,
+        "shipping_method": row.shipping_method,
     }
 
 
@@ -122,6 +128,12 @@ async def save_profile(
 ):
     """Upsert the tenant business profile with the provided fields."""
     await db.execute(text(f"SET app.tenant_id = '{current_user.tenant_id}'"))
+
+    if body.shipping_method is not None and body.shipping_method not in VALID_SHIPPING_METHODS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"shipping_method must be one of: {', '.join(VALID_SHIPPING_METHODS)}",
+        )
 
     # Build SET clause for only provided fields
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
