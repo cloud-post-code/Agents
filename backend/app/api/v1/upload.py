@@ -1,7 +1,7 @@
 """File upload endpoint for agent chat - images and CSV files."""
 import base64
 import uuid
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy import select
@@ -18,36 +18,39 @@ router = APIRouter(prefix="/agent/upload", tags=["agent-upload"])
 # Maximum file sizes
 MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10MB
 MAX_CSV_SIZE = 50 * 1024 * 1024    # 50MB
+MAX_FILES = 10
 
 # Allowed file types
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/jpg", "image/webp"}
 ALLOWED_CSV_TYPES = {"text/csv", "application/csv", "text/plain"}
 
 
-@router.post("")
-async def upload_file(
-    file: UploadFile = File(...),
-    session_id: Optional[str] = Form(None),
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Unified upload endpoint for agent chat.
+def _is_image(file: UploadFile) -> bool:
+    return (file.content_type or "") in ALLOWED_IMAGE_TYPES or (file.filename or "").lower().endswith(
+        (".jpg", ".jpeg", ".png", ".webp")
+    )
 
-    Accepts an image or CSV file and returns {file_id, url, type} that the
-    agent can reference in subsequent messages.
-    """
+
+def _is_csv(file: UploadFile) -> bool:
+    return (file.content_type or "") in ALLOWED_CSV_TYPES or (file.filename or "").lower().endswith(".csv")
+
+
+async def _process_single_file(
+    file: UploadFile,
+    session_id: Optional[str],
+    current_user: User,
+    db: AsyncSession,
+) -> dict:
+    """Process one file and return its metadata dict."""
     contents = await file.read()
     file_id = str(uuid.uuid4())
-    content_type = file.content_type or ""
+    content_type = file.content_type or "application/octet-stream"
 
-    if content_type in ALLOWED_IMAGE_TYPES or (file.filename or "").lower().endswith(
-        (".jpg", ".jpeg", ".png", ".webp")
-    ):
+    if _is_image(file):
         if len(contents) > MAX_IMAGE_SIZE:
             raise HTTPException(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail=f"Image too large. Maximum size: {MAX_IMAGE_SIZE // 1024 // 1024}MB",
+                detail=f"Image {file.filename!r} too large. Maximum size: {MAX_IMAGE_SIZE // 1024 // 1024}MB",
             )
         image_base64 = base64.b64encode(contents).decode()
         if session_id:
@@ -65,11 +68,11 @@ async def upload_file(
             "size": len(contents),
         }
 
-    if content_type in ALLOWED_CSV_TYPES or (file.filename or "").lower().endswith(".csv"):
+    if _is_csv(file):
         if len(contents) > MAX_CSV_SIZE:
             raise HTTPException(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail=f"CSV too large. Maximum size: {MAX_CSV_SIZE // 1024 // 1024}MB",
+                detail=f"CSV {file.filename!r} too large. Maximum size: {MAX_CSV_SIZE // 1024 // 1024}MB",
             )
         csv_base64 = base64.b64encode(contents).decode()
         if session_id:
@@ -89,8 +92,55 @@ async def upload_file(
 
     raise HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,
-        detail="Unsupported file type. Upload an image (JPEG, PNG, WebP) or a CSV file.",
+        detail=f"Unsupported file type for {file.filename!r}. Upload images (JPEG, PNG, WebP) or CSV files.",
     )
+
+
+@router.post("")
+async def upload_file(
+    file: Optional[UploadFile] = File(None),
+    files: Optional[List[UploadFile]] = File(None),
+    session_id: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Unified upload endpoint for agent chat.
+
+    Accepts one or more image/CSV files (up to 10) and returns a list of
+    {file_id, url, type, filename} objects.
+
+    Backward-compatible: accepts a single `file` field or a `files` list.
+    """
+    # Normalise to a list
+    all_files: List[UploadFile] = []
+    if files:
+        all_files.extend(files)
+    if file:
+        all_files.append(file)
+
+    if not all_files:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="No file(s) provided. Send `file` or `files` form field(s).",
+        )
+
+    if len(all_files) > MAX_FILES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Too many files. Maximum {MAX_FILES} files per request.",
+        )
+
+    results = []
+    for f in all_files:
+        result = await _process_single_file(f, session_id, current_user, db)
+        results.append(result)
+
+    # Backward-compatible: single-file callers get a flat dict; multi-file callers get a list
+    if len(results) == 1 and not files:
+        return results[0]
+
+    return {"files": results}
 
 
 @router.post("/image")
