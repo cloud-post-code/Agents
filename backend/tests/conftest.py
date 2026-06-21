@@ -50,6 +50,7 @@ async def db() -> AsyncGenerator[AsyncSession, None]:
 
 @pytest_asyncio.fixture(scope="function")
 async def client(db: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
+    import redis.asyncio as aioredis
     from app.db.engine import get_db
 
     async def override_get_db():
@@ -57,9 +58,16 @@ async def client(db: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
 
     app.dependency_overrides[get_db] = override_get_db
 
+    # Initialize redis in app state for tests (lifespan doesn't run with ASGITransport)
+    redis_client = aioredis.from_url(
+        os.environ.get("REDIS_URL", "redis://localhost:6380/0"), decode_responses=True
+    )
+    app.state.redis = redis_client
+
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test", follow_redirects=True) as c:
         yield c
 
+    await redis_client.aclose()
     app.dependency_overrides.clear()
 
 
