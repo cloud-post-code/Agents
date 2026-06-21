@@ -27,13 +27,13 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!token) return;
     apiFetch<{ items: Array<{ status: string }> }>("/api/v1/tasks?page_size=50", token)
-      .then((d) => setPendingTasks(d.items.filter((t) => t.status === "pending").length))
+      .then((d) => setPendingTasks((d.items ?? []).filter((t) => t.status === "pending").length))
       .catch(() => {});
     apiFetch<{ items: Array<{ id: string; type: string; read_at: string | null; created_at: string }> }>(
       "/api/v1/notifications?page_size=5", token
     ).then((d) => {
-      setUnreadNotifs(d.items.filter((n) => !n.read_at).length);
-      setRecentNotifs(d.items.slice(0, 3));
+      setUnreadNotifs((d.items ?? []).filter((n) => !n.read_at).length);
+      setRecentNotifs((d.items ?? []).slice(0, 3));
     }).catch(() => {});
   }, [token]);
 

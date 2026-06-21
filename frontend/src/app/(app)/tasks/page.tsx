@@ -79,7 +79,7 @@ export default function TasksPage() {
   const load = (tok: string) => {
     setFetching(true);
     apiFetch<{ items: Task[] }>("/api/v1/tasks", tok)
-      .then((d) => setTasks(d.items))
+      .then((d) => setTasks(d.items ?? []))
       .catch(console.error)
       .finally(() => { setFetching(false); setFetched(true); });
   };

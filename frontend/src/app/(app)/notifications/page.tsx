@@ -60,7 +60,7 @@ export default function NotificationsPage() {
   const load = (tok: string) => {
     setFetching(true);
     apiFetch<{ items: Notification[] }>("/api/v1/notifications", tok)
-      .then((d) => setNotifications(d.items))
+      .then((d) => setNotifications(d.items ?? []))
       .catch(console.error)
       .finally(() => { setFetching(false); setFetched(true); });
   };

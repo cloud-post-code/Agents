@@ -73,7 +73,7 @@ export default function ReportsPage() {
   const load = (tok: string) => {
     setFetching(true);
     apiFetch<{ items: Report[] }>("/api/v1/reports", tok)
-      .then((d) => setReports(d.items))
+      .then((d) => setReports(d.items ?? []))
       .catch(console.error)
       .finally(() => { setFetching(false); setFetched(true); });
   };
