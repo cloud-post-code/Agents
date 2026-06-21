@@ -138,7 +138,7 @@ def ingest_products_from_csv(csv_base64: str) -> dict:
     }
 
 
-SHARED_TOOLS = [create_task, render_ui, generate_report]
+SHARED_TOOLS = [render_ui, generate_report]
 PRODUCT_MANAGER_TOOLS = SHARED_TOOLS + [
     search_catalog,
     get_product_count,

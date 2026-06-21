@@ -149,9 +149,7 @@ class ArtisanAgent:
                 )
 
                 # Emit typed events for specific tools
-                if tool_name == "create_task" and result.get("task_id") != "stub-task-id":
-                    yield AgentEvent(type="task_created", payload=result)
-                elif tool_name == "render_ui":
+                if tool_name == "render_ui":
                     yield AgentEvent(type="a2ui", payload=result)
 
                 tool_result_str = json.dumps(result)
@@ -168,27 +166,12 @@ class ArtisanAgent:
         user_id: str | None,
         db=None,
     ) -> dict:
-        """Execute a named tool, using real DB for create_task when available."""
-        if tool_name == "create_task" and db is not None and tenant_id:
-            from app.services.tasks import create_task as svc_create_task
-            try:
-                task = await svc_create_task(
-                    db=db,
-                    tenant_id=uuid.UUID(tenant_id),
-                    created_by=uuid.UUID(user_id) if user_id else None,
-                    title=args.get("title", "Agent Task"),
-                    description=args.get("description", ""),
-                    priority=args.get("priority", 0),
-                )
-                return {
-                    "task_id": str(task.id),
-                    "title": task.title,
-                    "status": task.status,
-                    "message": "Task created and queued for your approval.",
-                }
-            except Exception as exc:
-                logger.error(f"[create_task] DB write failed: {exc}")
-                return {"task_id": "error", "error": str(exc)}
+        """Execute a named tool. create_task is disabled — agents no longer create tasks."""
+        if tool_name == "create_task":
+            return {
+                "error": "create_task is not available. Tasks have been removed from the system.",
+                "message": "Please take action directly instead of creating a task.",
+            }
 
         # Product manager tools with real implementations
         if tool_name == "get_product_count" and db is not None and tenant_id:
