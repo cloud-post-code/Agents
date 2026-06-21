@@ -50,6 +50,39 @@ def search_catalog(query: str, limit: int = 10) -> list:
 
 
 @tool
+def get_product_count() -> dict:
+    """
+    Get the total number of products in the catalog.
+    
+    Returns a simple count without generating a report.
+    """
+    return {
+        "total_products": 0,
+        "message": "Product count tool - implementation needed",
+    }
+
+
+@tool
+def get_catalog_summary() -> dict:
+    """
+    Get a quick summary of the product catalog.
+    
+    Returns:
+        - Total product count
+        - Low stock count (products below reorder point)
+        - Total inventory value
+        - Average price
+    """
+    return {
+        "total_products": 0,
+        "low_stock_count": 0,
+        "total_value": 0.0,
+        "average_price": 0.0,
+        "message": "Catalog summary tool - implementation needed",
+    }
+
+
+@tool
 def ingest_product_from_image(
     image_base64: str,
     price: float,
@@ -108,6 +141,8 @@ def ingest_products_from_csv(csv_base64: str) -> dict:
 SHARED_TOOLS = [create_task, render_ui, generate_report]
 PRODUCT_MANAGER_TOOLS = SHARED_TOOLS + [
     search_catalog,
+    get_product_count,
+    get_catalog_summary,
     ingest_product_from_image,
     ingest_products_from_csv,
 ]
