@@ -106,29 +106,19 @@ export function AgentShell({ agent }: AgentShellProps) {
       .then((data) => {
         const loaded: Message[] = data.messages
           .filter((m) => m.role === "user" || m.role === "assistant" || m.role === "card")
-          .map((m) => {
+          .reduce<Message[]>((acc, m) => {
             if (m.role === "card") {
               try {
                 const card = JSON.parse(m.content) as { type: string; payload: Record<string, unknown> };
-                return {
-                  id: m.id,
-                  role: card.type as MessageKind,
-                  content: "",
-                  payload: card.payload,
-                  created_at: m.created_at,
-                };
+                acc.push({ id: m.id, role: card.type as MessageKind, content: "", payload: card.payload, created_at: m.created_at });
               } catch {
-                return null;
+                // skip malformed card rows
               }
+            } else {
+              acc.push({ id: m.id, role: m.role as MessageKind, content: m.content, created_at: m.created_at });
             }
-            return {
-              id: m.id,
-              role: m.role as MessageKind,
-              content: m.content,
-              created_at: m.created_at,
-            };
-          })
-          .filter((m): m is Message => m !== null);
+            return acc;
+          }, []);
         setMessages(loaded);
         setHistoryLoaded(true);
       })
