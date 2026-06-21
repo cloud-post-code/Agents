@@ -4,7 +4,7 @@ import redis.asyncio as aioredis
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1 import auth, health, products
+from app.api.v1 import auth, health, products, ws_agent
 from app.core.config import settings
 from app.db.engine import engine
 
@@ -31,3 +31,4 @@ app.add_middleware(
 app.include_router(health.router, prefix="/api/v1")
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(products.router, prefix="/api/v1")
+app.include_router(ws_agent.router)  # WebSocket routes don't use /api/v1 prefix

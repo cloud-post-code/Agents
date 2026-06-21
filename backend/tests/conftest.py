@@ -89,6 +89,60 @@ async def registered_user(client: AsyncClient) -> RegisteredUser:
     return RegisteredUser(email=email, raw_password=password)
 
 
+@pytest_asyncio.fixture(scope="function")
+async def ws_client(db: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
+    """HTTP client configured for WebSocket testing via ASGI."""
+    import redis.asyncio as aioredis
+    from httpx_ws.transport import ASGIWebSocketTransport
+    from app.db.engine import get_db
+
+    async def override_get_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    redis_client = aioredis.from_url(
+        os.environ.get("REDIS_URL", "redis://localhost:6380/0"), decode_responses=True
+    )
+    app.state.redis = redis_client
+
+    transport = ASGIWebSocketTransport(app=app)
+    c = AsyncClient(transport=transport, base_url="http://test")
+    await c.__aenter__()
+    yield c
+    try:
+        await c.__aexit__(None, None, None)
+    except RuntimeError:
+        # anyio cancel scope teardown issue in pytest-asyncio — safe to ignore
+        pass
+    await redis_client.aclose()
+    app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def auth_headers(client: AsyncClient) -> dict:
+    """Register a user and return Authorization headers."""
+    r = await client.post("/api/v1/auth/register", json={
+        "email": "agent-test@test.com",
+        "password": "secret123",
+        "business_name": "Agent Test Shop",
+    })
+    token = r.json()["token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest_asyncio.fixture
+async def ws_auth_headers(ws_client: AsyncClient) -> dict:
+    """Register a user and return Authorization headers for WS tests."""
+    r = await ws_client.post("/api/v1/auth/register", json={
+        "email": "ws-agent-test@test.com",
+        "password": "secret123",
+        "business_name": "WS Agent Test Shop",
+    })
+    token = r.json()["token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
 @dataclass
 class FakeTenant:
     id: uuid.UUID
