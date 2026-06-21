@@ -47,7 +47,7 @@ export function ProductCard({
   const [isEditingSKU, setIsEditingSKU] = useState(false);
   const [isEditingStock, setIsEditingStock] = useState(false);
   const [skuValue, setSkuValue] = useState(sku || '');
-  const [stockValue, setstockValue] = useState(stockQty.toString());
+  const [stockValue, setStockValue] = useState(stockQty.toString());
   const [isSaving, setIsSaving] = useState(false);
   
   const skuInputRef = useRef<HTMLInputElement>(null);
@@ -144,7 +144,7 @@ export function ProductCard({
           </h3>
           {price !== undefined && (
             <div className="ml-3 flex-shrink-0">
-              <PriceTag amount={price} size="lg" />
+              <PriceTag amount={price} />
             </div>
           )}
         </div>
