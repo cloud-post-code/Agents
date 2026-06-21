@@ -5,6 +5,11 @@ import { AgentConfig } from "@/lib/agents";
 import { useAuth } from "@/hooks/useAuth";
 import { apiFetch, getApiBase } from "@/lib/api";
 import { SaveProfileCard } from "@/components/a2ui/surfaces/SaveProfileCard";
+import { EditProductCard } from "@/components/a2ui/surfaces/EditProductCard";
+import { SearchProductCard } from "@/components/a2ui/surfaces/SearchProductCard";
+import { VariantCard } from "@/components/a2ui/surfaces/VariantCard";
+import { RemoveProductCard } from "@/components/a2ui/surfaces/RemoveProductCard";
+import { ProductImagesCard } from "@/components/a2ui/surfaces/ProductImagesCard";
 
 type MessageKind = "user" | "assistant" | "task_created" | "a2ui" | "card";
 
@@ -54,21 +59,37 @@ function A2UICard({ payload }: { payload: Record<string, unknown> }) {
   const surface = String(payload.surface ?? payload.component ?? "surface");
   const props = (payload.props ?? {}) as Record<string, unknown>;
 
-  // save_profile surface renders an interactive save card
-  if (surface === "save_profile") {
-    return <SaveProfileCard {...props} />;
-  }
+  if (surface === "save_profile") return <SaveProfileCard {...(props as unknown as Parameters<typeof SaveProfileCard>[0])} />;
+  if (surface === "edit_product") return <EditProductCard {...(props as unknown as Parameters<typeof EditProductCard>[0])} />;
+  if (surface === "search_products") return <SearchProductCard {...(props as unknown as Parameters<typeof SearchProductCard>[0])} />;
+  if (surface === "product_variants") return <VariantCard {...(props as unknown as Parameters<typeof VariantCard>[0])} />;
+  if (surface === "remove_product") return <RemoveProductCard {...(props as unknown as Parameters<typeof RemoveProductCard>[0])} />;
+  if (surface === "product_images") return <ProductImagesCard {...(props as unknown as Parameters<typeof ProductImagesCard>[0])} />;
+
+  // Generic fallback — show field labels + values in plain English, no raw JSON
+  const entries = Object.entries(props).filter(([, v]) => v !== undefined && v !== null);
+  const surfaceLabel = surface.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
   return (
-    <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm">
-      <div className="flex items-center gap-2 mb-2">
-        <span className="text-blue-600 font-semibold text-xs uppercase tracking-wide">
-          {surface}
-        </span>
+    <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm w-full max-w-sm">
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-blue-700 font-semibold">{surfaceLabel}</span>
       </div>
-      <pre className="text-xs text-gray-600 whitespace-pre-wrap overflow-x-auto bg-white rounded-lg p-3 border border-blue-100">
-        {JSON.stringify(props, null, 2)}
-      </pre>
+      <div className="space-y-1.5">
+        {entries.length === 0 && (
+          <p className="text-xs text-gray-500 italic">No details provided.</p>
+        )}
+        {entries.map(([key, value]) => (
+          <div key={key} className="flex gap-2">
+            <span className="text-xs text-gray-500 w-28 shrink-0 capitalize">
+              {key.replace(/_/g, " ")}
+            </span>
+            <span className="text-xs font-medium text-gray-800 break-words">
+              {typeof value === "object" ? JSON.stringify(value) : String(value)}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -86,6 +107,13 @@ function DateDivider({ date }: { date: string }) {
   );
 }
 
+interface AttachedFile {
+  fileId: string;
+  url: string;
+  type: "image" | "csv";
+  filename: string;
+}
+
 export function AgentShell({ agent }: AgentShellProps) {
   const { token } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -94,6 +122,9 @@ export function AgentShell({ agent }: AgentShellProps) {
   const [streaming, setStreaming] = useState(false);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [attachedFile, setAttachedFile] = useState<AttachedFile | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const pendingRef = useRef<string>("");
@@ -222,15 +253,59 @@ export function AgentShell({ agent }: AgentShellProps) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !token) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const apiBase = getApiBase();
+      const res = await fetch(`${apiBase}/api/v1/agent/upload`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `Upload failed: ${res.status}`);
+      }
+      const data = await res.json() as { file_id: string; url: string; type: string; filename: string };
+      setAttachedFile({
+        fileId: data.file_id,
+        url: data.url,
+        type: data.type as "image" | "csv",
+        filename: data.filename,
+      });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
   const send = () => {
     const text = input.trim();
-    if (!text || streaming || !wsRef.current || wsRef.current.readyState !== 1) return;
+    const hasFile = !!attachedFile;
+    if ((!text && !hasFile) || streaming || !wsRef.current || wsRef.current.readyState !== 1) return;
+
+    const messageContent = attachedFile
+      ? `${text ? text + "\n" : ""}[Attached ${attachedFile.type}: ${attachedFile.filename}]\n${attachedFile.url}`
+      : text;
+
+    const displayContent = attachedFile
+      ? `${text ? text + " " : ""}📎 ${attachedFile.filename}`
+      : text;
+
     setInput("");
+    setAttachedFile(null);
     setError(null);
     pendingRef.current = "";
-    setMessages((prev) => [...prev, { role: "user", content: text, id: crypto.randomUUID() }]);
+    setMessages((prev) => [...prev, { role: "user", content: displayContent, id: crypto.randomUUID() }]);
     setStreaming(true);
-    wsRef.current.send(JSON.stringify({ type: "message", content: text }));
+    wsRef.current.send(JSON.stringify({ type: "message", content: messageContent }));
   };
 
   const colorMap: Record<string, string> = {
@@ -340,7 +415,37 @@ export function AgentShell({ agent }: AgentShellProps) {
       </div>
 
       <div className="border-t p-3 bg-white">
+        {attachedFile && (
+          <div className="flex items-center gap-2 mb-2 px-1">
+            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
+              📎 {attachedFile.filename}
+              <button
+                onClick={() => setAttachedFile(null)}
+                className="ml-1 text-blue-500 hover:text-blue-700 font-bold"
+                aria-label="Remove attachment"
+              >
+                ×
+              </button>
+            </span>
+          </div>
+        )}
         <div className="flex gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,.csv,text/csv"
+            className="hidden"
+            onChange={handleFileChange}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={streaming || !connected || uploading}
+            className="px-3 py-2 border rounded-xl text-gray-500 hover:text-blue-600 hover:border-blue-300 disabled:opacity-40 transition-colors text-sm"
+            title="Attach image or CSV"
+          >
+            {uploading ? "⏳" : "📎"}
+          </button>
           <input
             className="flex-1 border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
             placeholder={connected ? `Message ${agent.name}...` : "Connecting..."}
@@ -351,7 +456,7 @@ export function AgentShell({ agent }: AgentShellProps) {
           />
           <button
             onClick={send}
-            disabled={streaming || !connected || !input.trim()}
+            disabled={streaming || !connected || (!input.trim() && !attachedFile)}
             className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium disabled:opacity-40 hover:bg-blue-700 transition-colors"
           >
             {streaming ? "●●●" : "Send"}
