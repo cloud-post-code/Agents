@@ -56,9 +56,21 @@ function TaskCreatedCard({ payload }: { payload: Record<string, unknown> }) {
   );
 }
 
+function isImageUrl(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  return /^https?:\/\/.+\.(jpg|jpeg|png|webp|gif|avif|svg)(\?.*)?$/i.test(value) ||
+    value.includes("/uploads/") || value.includes("/images/") || value.includes("railway") && value.includes("http");
+}
+
 function A2UICard({ payload }: { payload: Record<string, unknown> }) {
   const surface = String(payload.surface ?? payload.component ?? "surface");
-  const props = (payload.props ?? {}) as Record<string, unknown>;
+  // Support both nested props ({surface, props:{...}}) and flat ({surface, image_url, name, ...})
+  const rawProps = (payload.props && typeof payload.props === "object")
+    ? payload.props as Record<string, unknown>
+    : payload;
+  // Remove surface/component/components keys from flat spread
+  const { surface: _s, component: _c, components: _co, ...props } = rawProps as Record<string, unknown>;
+  void _s; void _c; void _co;
 
   if (surface === "save_profile") return <SaveProfileCard {...(props as unknown as Parameters<typeof SaveProfileCard>[0])} />;
   if (surface === "edit_product") return <EditProductCard {...(props as unknown as Parameters<typeof EditProductCard>[0])} />;
@@ -68,7 +80,7 @@ function A2UICard({ payload }: { payload: Record<string, unknown> }) {
   if (surface === "product_images") return <ProductImagesCard {...(props as unknown as Parameters<typeof ProductImagesCard>[0])} />;
   if (surface === "confirm_product") return <ConfirmProductCard {...(props as unknown as Parameters<typeof ConfirmProductCard>[0])} />;
 
-  // Generic fallback — show field labels + values in plain English, no raw JSON
+  // Generic fallback — render images as <img>, everything else as readable text
   const entries = Object.entries(props).filter(([, v]) => v !== undefined && v !== null);
   const surfaceLabel = surface.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
@@ -77,20 +89,34 @@ function A2UICard({ payload }: { payload: Record<string, unknown> }) {
       <div className="flex items-center gap-2 mb-3">
         <span className="text-blue-700 font-semibold">{surfaceLabel}</span>
       </div>
-      <div className="space-y-1.5">
+      <div className="space-y-2">
         {entries.length === 0 && (
           <p className="text-xs text-gray-500 italic">No details provided.</p>
         )}
-        {entries.map(([key, value]) => (
-          <div key={key} className="flex gap-2">
-            <span className="text-xs text-gray-500 w-28 shrink-0 capitalize">
-              {key.replace(/_/g, " ")}
-            </span>
-            <span className="text-xs font-medium text-gray-800 break-words">
-              {typeof value === "object" ? JSON.stringify(value) : String(value)}
-            </span>
-          </div>
-        ))}
+        {entries.map(([key, value]) => {
+          if (isImageUrl(value)) {
+            return (
+              <div key={key}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={value}
+                  alt={key.replace(/_/g, " ")}
+                  className="w-full max-h-48 object-cover rounded-xl"
+                />
+              </div>
+            );
+          }
+          return (
+            <div key={key} className="flex gap-2">
+              <span className="text-xs text-gray-500 w-28 shrink-0 capitalize">
+                {key.replace(/_/g, " ")}
+              </span>
+              <span className="text-xs font-medium text-gray-800 break-words">
+                {typeof value === "object" ? JSON.stringify(value) : String(value)}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -326,6 +352,24 @@ export function AgentShell({ agent }: AgentShellProps) {
   };
   const agentColor = colorMap[agent.color] || "bg-gray-600";
 
+  // Render message content — replace image URLs with actual <img> tags
+  const renderMessageContent = (content: string) => {
+    const urlRegex = /(https?:\/\/\S+\.(jpg|jpeg|png|webp|gif|avif)(\?\S*)?)/gi;
+    const parts = content.split(urlRegex);
+    if (parts.length === 1) return content; // no image URLs found
+    return parts.map((part, i) => {
+      if (/^https?:\/\/.+\.(jpg|jpeg|png|webp|gif|avif)/i.test(part)) {
+        return (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img key={i} src={part} alt="Uploaded image" className="max-w-full rounded-xl mt-2 max-h-64 object-cover" />
+        );
+      }
+      // Filter out the capture groups (indices 1,2 from the regex)
+      if (/^\.(jpg|jpeg|png|webp|gif|avif)$/i.test(part) || part.startsWith("?")) return null;
+      return part || null;
+    });
+  };
+
   // Insert date dividers between messages from different days
   const renderMessages = () => {
     const nodes: React.ReactNode[] = [];
@@ -375,7 +419,7 @@ export function AgentShell({ agent }: AgentShellProps) {
                 ? "bg-blue-600 text-white rounded-tr-sm"
                 : "bg-white border shadow-sm rounded-tl-sm"
             }`}>
-              {msg.content}
+              {renderMessageContent(msg.content)}
               {msg.id === "streaming" && (
                 <span className="inline-block w-1.5 h-3.5 bg-gray-400 animate-pulse ml-1 rounded-sm align-middle" />
               )}
