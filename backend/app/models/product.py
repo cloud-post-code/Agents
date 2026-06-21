@@ -9,6 +9,20 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.engine import Base
 
 
+class ProductImage(Base):
+    """One row per image attached to a product. image_order controls display order."""
+    __tablename__ = "product_images"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("products.id", ondelete="CASCADE"), nullable=False
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    image_url: Mapped[str] = mapped_column(String(1024), nullable=False)
+    image_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Product(Base):
     __tablename__ = "products"
 
@@ -22,7 +36,7 @@ class Product(Base):
     stock_qty: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     reorder_point: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
     
-    # Image storage
+    # Primary/thumbnail image shortcut — canonical store is the product_images table
     image_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     image_data: Mapped[str | None] = mapped_column(Text, nullable=True)  # base64 for small images
     

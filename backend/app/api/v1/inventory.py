@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user
 from app.db.engine import get_db
-from app.models.product import Product, ProductVariant, StockAdjustment
+from app.models.product import Product, ProductImage, ProductVariant, StockAdjustment
 from app.models.user import User
 
 router = APIRouter(prefix="/products", tags=["inventory"])
@@ -220,6 +220,37 @@ async def adjust_stock(
     return _product_dict(product)
 
 
+class UpdateVariantRequest(BaseModel):
+    name: Optional[str] = None
+    sku: Optional[str] = None
+    price: Optional[float] = None
+    stock_qty: Optional[int] = None
+
+
+@router.patch("/{product_id}/variants/{variant_id}")
+async def update_variant(
+    product_id: uuid.UUID,
+    variant_id: uuid.UUID,
+    body: UpdateVariantRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    variant = await db.scalar(
+        select(ProductVariant).where(
+            ProductVariant.id == variant_id,
+            ProductVariant.product_id == product_id,
+            ProductVariant.tenant_id == current_user.tenant_id,
+        )
+    )
+    if variant is None:
+        raise HTTPException(status_code=404, detail="Variant not found")
+    for field, value in body.model_dump(exclude_none=True).items():
+        setattr(variant, field, value)
+    await db.commit()
+    await db.refresh(variant)
+    return _variant_dict(variant)
+
+
 @router.post("/{product_id}/variants", status_code=201)
 async def create_variant(
     product_id: uuid.UUID,
@@ -248,6 +279,76 @@ async def create_variant(
     await db.commit()
     await db.refresh(variant)
     return _variant_dict(variant)
+
+
+class AddProductImageRequest(BaseModel):
+    image_url: str
+    image_order: int = 0
+
+
+def _image_dict(img: ProductImage) -> dict:
+    return {
+        "id": str(img.id),
+        "product_id": str(img.product_id),
+        "image_url": img.image_url,
+        "image_order": img.image_order,
+        "created_at": img.created_at.isoformat() if img.created_at else None,
+    }
+
+
+@router.get("/{product_id}/images")
+async def list_product_images(
+    product_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    product = await db.scalar(
+        select(Product).where(
+            Product.id == product_id,
+            Product.tenant_id == current_user.tenant_id,
+            Product.deleted_at.is_(None),
+        )
+    )
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+    result = await db.execute(
+        select(ProductImage)
+        .where(ProductImage.product_id == product_id)
+        .order_by(ProductImage.image_order)
+    )
+    images = result.scalars().all()
+    return {"items": [_image_dict(img) for img in images]}
+
+
+@router.post("/{product_id}/images", status_code=201)
+async def add_product_image(
+    product_id: uuid.UUID,
+    body: AddProductImageRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    product = await db.scalar(
+        select(Product).where(
+            Product.id == product_id,
+            Product.tenant_id == current_user.tenant_id,
+            Product.deleted_at.is_(None),
+        )
+    )
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+    img = ProductImage(
+        product_id=product_id,
+        tenant_id=current_user.tenant_id,
+        image_url=body.image_url,
+        image_order=body.image_order,
+    )
+    db.add(img)
+    # Also set product.image_url to the first image if not set
+    if product.image_url is None and body.image_order == 0:
+        product.image_url = body.image_url
+    await db.commit()
+    await db.refresh(img)
+    return _image_dict(img)
 
 
 async def _check_low_stock(db: AsyncSession, product: Product, tenant_id: uuid.UUID):
