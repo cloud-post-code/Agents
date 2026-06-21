@@ -31,7 +31,7 @@
     {
       "id": "04-frontend-skeleton",
       "title": "Frontend Skeleton",
-      "status": "pending",
+      "status": "passing",
       "priority": 4,
       "skill": "coding-frontend",
       "proof_command": "npx vitest run frontend/src/tests/skeleton.test.tsx",
@@ -40,7 +40,7 @@
     {
       "id": "05-agent-chat-core",
       "title": "Agent Chat Core",
-      "status": "pending",
+      "status": "passing",
       "priority": 5,
       "skill": "coding-python-backend",
       "proof_command": "pytest backend/tests/test_agent_chat.py -v",
