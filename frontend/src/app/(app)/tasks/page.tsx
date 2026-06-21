@@ -27,12 +27,8 @@ const STATUS_COLORS: Record<string, string> = {
 function Skeleton() {
   return (
     <div className="animate-pulse space-y-3">
-      {/* Pending section */}
-      <p className="text-xs font-semibold text-gray-300 uppercase tracking-wide">Needs Approval (2)</p>
-      {[
-        { title: "Review Q3 pricing strategy", agent: "Strategist", due: "Tomorrow" },
-        { title: "Update Etsy listing descriptions for holiday season", agent: "Marketer", due: "Jun 25" },
-      ].map((t, i) => (
+      <p className="text-xs font-semibold text-gray-300 uppercase tracking-wide">Needs Approval</p>
+      {[0, 1].map((i) => (
         <div key={i} className="bg-white border-l-4 border-yellow-200 rounded-xl p-4 shadow-sm">
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1 space-y-1.5">
@@ -50,11 +46,8 @@ function Skeleton() {
           </div>
         </div>
       ))}
-
       <p className="text-xs font-semibold text-gray-300 uppercase tracking-wide mt-6">History</p>
-      {[
-        { status: "completed" }, { status: "approved" }, { status: "rejected" },
-      ].map((t, i) => (
+      {[0, 1, 2].map((i) => (
         <div key={i} className="bg-white rounded-xl border p-4 flex items-center justify-between">
           <div className="space-y-1">
             <div className="h-4 bg-gray-200 rounded w-48" />
@@ -122,41 +115,9 @@ export default function TasksPage() {
       {showSkeleton ? (
         <Skeleton />
       ) : tasks.length === 0 ? (
-        // Empty state that looks like the real thing — greyed out example
-        <div className="opacity-40 pointer-events-none select-none">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Needs Approval</p>
-          <div className="bg-white border-l-4 border-yellow-400 rounded-xl p-4 shadow-sm mb-3">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="font-medium">Review Q3 pricing strategy</p>
-                <p className="text-sm text-gray-500 mt-0.5">Strategist recommends 8% price increase on ceramic line</p>
-                <p className="text-xs text-gray-400 mt-1">Created by: strategist · Due: tomorrow</p>
-              </div>
-              <div className="flex gap-2">
-                <button className="px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg">Approve</button>
-                <button className="px-3 py-1.5 border text-sm rounded-lg text-red-600 border-red-200">Reject</button>
-              </div>
-            </div>
-          </div>
-          <div className="bg-white border-l-4 border-yellow-400 rounded-xl p-4 shadow-sm mb-6">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="font-medium">Update holiday listing descriptions</p>
-                <p className="text-sm text-gray-500 mt-0.5">Marketer drafted SEO-optimised copy for 12 products</p>
-              </div>
-              <div className="flex gap-2">
-                <button className="px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg">Approve</button>
-                <button className="px-3 py-1.5 border text-sm rounded-lg text-red-600 border-red-200">Reject</button>
-              </div>
-            </div>
-          </div>
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">History</p>
-          {["Restocked ceramic bowls — 50 units", "Published new Etsy listings (8)", "Updated shipping rates"].map((t, i) => (
-            <div key={i} className="bg-white rounded-xl border p-4 flex items-center justify-between mb-2">
-              <p className="font-medium text-sm">{t}</p>
-              <span className="text-xs px-2.5 py-1 rounded-full bg-green-100 text-green-800">completed</span>
-            </div>
-          ))}
+        <div className="text-center py-16 text-gray-400">
+          <p className="text-sm">No tasks yet.</p>
+          <p className="text-xs mt-1">Tasks created by your AI team will appear here for approval.</p>
         </div>
       ) : (
         <>

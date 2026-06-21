@@ -26,12 +26,6 @@ const TYPE_LABELS: Record<string, string> = {
   low_stock: "Low stock alert",
 };
 
-const EXAMPLE_NOTIFS = [
-  { icon: "📋", label: "Task needs your approval", sub: "Review Q3 pricing strategy", unread: true, time: "2 min ago" },
-  { icon: "📄", label: "Report is ready to download", sub: "Business Health Summary — June 2026", unread: true, time: "1 hr ago" },
-  { icon: "📦", label: "Low stock alert", sub: "Ceramic Bowl (CB-001) — 3 units remaining", unread: false, time: "Yesterday" },
-  { icon: "✅", label: "Task approved", sub: "Restock ceramic bowls — 50 units ordered", unread: false, time: "2 days ago" },
-];
 
 function Skeleton() {
   return (
@@ -98,18 +92,9 @@ export default function NotificationsPage() {
       {showSkeleton ? (
         <Skeleton />
       ) : notifications.length === 0 ? (
-        <div className="opacity-40 pointer-events-none select-none space-y-2">
-          {EXAMPLE_NOTIFS.map((n, i) => (
-            <div key={i} className={`bg-white rounded-xl border p-4 flex items-start gap-3 ${n.unread ? "border-l-4 border-l-blue-500" : ""}`}>
-              <span className="text-xl mt-0.5">{n.icon}</span>
-              <div className="flex-1">
-                <p className={`text-sm font-medium ${n.unread ? "text-gray-900" : "text-gray-500"}`}>{n.label}</p>
-                <p className="text-sm text-gray-400 mt-0.5">{n.sub}</p>
-                <p className="text-xs text-gray-300 mt-1">{n.time}</p>
-              </div>
-              {n.unread && <span className="w-2 h-2 rounded-full bg-blue-500 mt-1.5 shrink-0" />}
-            </div>
-          ))}
+        <div className="text-center py-16 text-gray-400">
+          <p className="text-sm">No notifications yet.</p>
+          <p className="text-xs mt-1">Activity from your AI team will appear here.</p>
         </div>
       ) : (
         <div className="space-y-2">

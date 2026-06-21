@@ -36,12 +36,6 @@ const STATUS_COLORS: Record<string, string> = {
   failed: "text-red-500 bg-red-50",
 };
 
-const EXAMPLE_REPORTS = [
-  { title: "Business Health Summary", agent: "Strategist", date: "Today, 9:00 AM", size: "84 KB", status: "complete" },
-  { title: "Inventory Health", agent: "Product Manager", date: "Today, 9:01 AM", size: "62 KB", status: "complete" },
-  { title: "Orders Log — June 2026", agent: "Admin", date: "Yesterday", size: "128 KB", status: "complete" },
-  { title: "Product Performance", agent: "Marketer", date: "Jun 19", size: "91 KB", status: "complete" },
-];
 
 function Skeleton() {
   return (
@@ -139,20 +133,9 @@ export default function ReportsPage() {
       {showSkeleton ? (
         <Skeleton />
       ) : reports.length === 0 ? (
-        <div className="opacity-40 pointer-events-none select-none space-y-2">
-          {EXAMPLE_REPORTS.map((r, i) => (
-            <div key={i} className="bg-white rounded-xl border p-4 flex items-center justify-between">
-              <div>
-                <p className="font-medium text-sm">{r.title}</p>
-                <div className="flex gap-3 mt-0.5 text-xs text-gray-400">
-                  <span>{r.agent}</span>
-                  <span>{r.date}</span>
-                  <span>{r.size}</span>
-                </div>
-              </div>
-              <button className="px-3 py-1.5 border text-sm rounded-lg text-blue-600">↓ Download</button>
-            </div>
-          ))}
+        <div className="text-center py-16 text-gray-400">
+          <p className="text-sm">No reports yet.</p>
+          <p className="text-xs mt-1">Generate a report above to get started.</p>
         </div>
       ) : (
         <div className="space-y-2">

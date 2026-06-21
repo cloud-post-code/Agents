@@ -21,13 +21,6 @@ const AGENT_CHIP: Record<string, string> = {
   admin: "bg-amber-100 text-amber-700",
 };
 
-const EXAMPLE_EVENTS = [
-  { date: "Today", time: "All day", title: "End-of-month inventory count", agent: "product_manager", desc: null },
-  { date: "Today", time: "3:00 PM", title: "Review new pricing recommendations", agent: "strategist", desc: "Strategist flagged 3 products for repricing" },
-  { date: "Tomorrow", time: "All day", title: "Holiday campaign goes live", agent: "marketer", desc: null },
-  { date: "Jun 28", time: "9:00 AM", title: "Supplier order deadline — Dharma Clay", agent: "product_manager", desc: null },
-  { date: "Jun 30", time: "All day", title: "Monthly financial statement due", agent: "admin", desc: null },
-];
 
 function Skeleton() {
   return (
@@ -139,33 +132,9 @@ export default function CalendarPage() {
       {showSkeleton ? (
         <Skeleton />
       ) : events.length === 0 ? (
-        <div className="opacity-40 pointer-events-none select-none space-y-4">
-          {[
-            { date: "Today", items: EXAMPLE_EVENTS.filter((_, i) => i < 2) },
-            { date: "Tomorrow", items: EXAMPLE_EVENTS.filter((_, i) => i === 2) },
-            { date: "Jun 28", items: EXAMPLE_EVENTS.filter((_, i) => i === 3) },
-            { date: "Jun 30", items: EXAMPLE_EVENTS.filter((_, i) => i === 4) },
-          ].map(({ date, items }) => (
-            <div key={date} className="bg-white rounded-xl border overflow-hidden">
-              <div className="px-4 py-2 bg-gray-50 border-b">
-                <p className="text-sm font-semibold text-gray-700">{date}</p>
-              </div>
-              <div className="divide-y">
-                {items.map((ev, i) => (
-                  <div key={i} className="px-4 py-3 flex items-start gap-3">
-                    <span className="text-xs text-gray-400 w-16 shrink-0 mt-0.5">{ev.time}</span>
-                    <div className="flex-1">
-                      <p className="text-sm font-medium">{ev.title}</p>
-                      {ev.desc && <p className="text-xs text-gray-400 mt-0.5">{ev.desc}</p>}
-                    </div>
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${AGENT_CHIP[ev.agent]}`}>
-                      {ev.agent.replace("_", " ")}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
+        <div className="text-center py-16 text-gray-400">
+          <p className="text-sm">No events this month.</p>
+          <p className="text-xs mt-1">Add an event or let your AI team schedule one.</p>
         </div>
       ) : (
         <div className="space-y-4">
