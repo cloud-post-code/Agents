@@ -30,13 +30,12 @@ class RegisteredUser:
 async def register_user(
     db: AsyncSession, email: str, password: str, business_name: str
 ) -> RegisteredUser:
-    existing = await db.scalar(select(User).where(User.email == email))
-    if existing:
-        raise ValueError("email_taken")
-
     tenant = Tenant(slug=_slugify(business_name), display_name=business_name)
     db.add(tenant)
     await db.flush()  # populate tenant.id before referencing it
+
+    # Set tenant context so RLS allows the user INSERT and subsequent reads
+    await db.execute(text(f"SET LOCAL app.tenant_id = '{tenant.id}'"))
 
     user = User(
         tenant_id=tenant.id,
@@ -62,11 +61,15 @@ class LoginResult:
 
 
 async def login_user(db: AsyncSession, email: str, password: str) -> LoginResult:
-    user = await db.scalar(select(User).where(User.email == email))
-    if not user or not verify_password(password, user.password_hash):
+    # Raw query bypasses RLS — email is unique across all tenants
+    row = (await db.execute(
+        text("SELECT id, tenant_id, password_hash, role FROM users WHERE email = :email"),
+        {"email": email},
+    )).fetchone()
+    if not row or not verify_password(password, row.password_hash):
         raise ValueError("invalid_credentials")
 
     token = create_access_token(
-        {"sub": str(user.id), "tenant_id": str(user.tenant_id), "role": user.role}
+        {"sub": str(row.id), "tenant_id": str(row.tenant_id), "role": row.role}
     )
-    return LoginResult(token=token, user_id=user.id, tenant_id=user.tenant_id)
+    return LoginResult(token=token, user_id=row.id, tenant_id=row.tenant_id)

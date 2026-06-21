@@ -31,19 +31,18 @@ TABLES_TO_CLEAN = [
 
 @pytest_asyncio.fixture(scope="function")
 async def db() -> AsyncGenerator[AsyncSession, None]:
-    """Function-scoped session using the pre-migrated test DB."""
+    """Function-scoped DB session. Truncates all tenant tables before each test."""
     engine = create_async_engine(TEST_DB_URL, echo=False)
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(
+                "TRUNCATE TABLE notifications, task_approvals, calendar_events, "
+                "agent_messages, reports, tasks, integrations, agent_sessions, "
+                "products, users, tenants RESTART IDENTITY CASCADE"
+            )
+        )
     session_factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
     async with session_factory() as session:
-        # Disable RLS for cleanup — use SET LOCAL to limit to this statement
-        await session.execute(text("SET LOCAL app.tenant_id = '00000000-0000-0000-0000-000000000000'"))
-        for t in TABLES_TO_CLEAN:
-            try:
-                await session.execute(text(f"TRUNCATE TABLE {t} RESTART IDENTITY CASCADE"))
-            except Exception:
-                await session.rollback()
-                break
-        await session.commit()
         yield session
     await engine.dispose()
 

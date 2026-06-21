@@ -58,7 +58,7 @@
     {
       "id": "07-task-queue-approval",
       "title": "Task Queue + Approval Flow",
-      "status": "pending",
+      "status": "passing",
       "priority": 7,
       "skill": "coding-feature-execute",
       "proof_command": "pytest backend/tests/test_task_queue.py -v",

@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user
@@ -41,8 +42,8 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)) ->
         raise HTTPException(status_code=422, detail="Password must be at least 8 characters")
     try:
         result = await register_user(db, body.email, body.password, body.business_name)
-    except ValueError as exc:
-        if "email_taken" in str(exc):
+    except (ValueError, IntegrityError) as exc:
+        if "email_taken" in str(exc) or "unique" in str(exc).lower() or "duplicate" in str(exc).lower():
             raise HTTPException(status_code=409, detail="Email already registered")
         raise
     return TokenResponse(token=result.token, onboarding=True)
