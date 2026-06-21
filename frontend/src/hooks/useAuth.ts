@@ -44,15 +44,26 @@ export function useAuthState(): AuthContextValue {
     const t = getCookie(COOKIE_KEY);
     if (t) {
       setToken(t);
-      apiMe(t).then((data) => {
-        if (data) {
-          setUser(data.user);
-          setTenant(data.tenant);
-        } else {
-          deleteCookie(COOKIE_KEY);
-          setToken(null);
-        }
-      }).finally(() => setLoading(false));
+      apiMe(t)
+        .then((data) => {
+          if (data) {
+            setUser(data.user);
+            setTenant(data.tenant);
+          } else {
+            // null = 401/403: token is invalid, clear it
+            deleteCookie(COOKIE_KEY);
+            setToken(null);
+          }
+        })
+        .catch((e: Error) => {
+          // network_error or server_error: backend is down, keep the cookie
+          // so the user stays logged in and can retry later
+          if (e.message !== "network_error" && e.message !== "server_error") {
+            deleteCookie(COOKIE_KEY);
+            setToken(null);
+          }
+        })
+        .finally(() => setLoading(false));
     } else {
       setLoading(false);
     }

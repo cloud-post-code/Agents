@@ -51,12 +51,20 @@ export async function apiLogin(email: string, password: string) {
   return res.json() as Promise<{ token: string; onboarding: boolean }>;
 }
 
-export async function apiMe(token: string) {
-  const res = await fetch(`${API_BASE}/api/v1/auth/me`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) return null;
-  return res.json() as Promise<{ user: AuthUser; tenant: AuthTenant }>;
+export async function apiMe(token: string): Promise<{ user: AuthUser; tenant: AuthTenant } | null> {
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    // 401/403 = bad token, clear session. 5xx/network = backend down, keep session.
+    if (res.status === 401 || res.status === 403) return null;
+    if (!res.ok) throw new Error("server_error");
+    return res.json();
+  } catch (e: any) {
+    if (e?.message === "server_error") throw e;
+    // Network error or CORS — don't wipe the session, treat as transient
+    throw new Error("network_error");
+  }
 }
 
 export async function apiLogout(token: string) {

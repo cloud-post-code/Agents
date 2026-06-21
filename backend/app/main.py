@@ -1,8 +1,9 @@
 from contextlib import asynccontextmanager
 
 import redis.asyncio as aioredis
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api.v1 import auth, calendar, health, inventory, notifications, reports, tasks, ws_agent
 from app.core.config import settings
@@ -35,6 +36,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.exception_handler(Exception)
+async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
+    origin = request.headers.get("origin", "")
+    headers = {}
+    if _cors_origins == ["*"] or origin in _cors_origins:
+        headers["Access-Control-Allow-Origin"] = origin or "*"
+        headers["Access-Control-Allow-Credentials"] = "true"
+    return JSONResponse({"detail": "Internal server error"}, status_code=500, headers=headers)
 
 app.include_router(health.router, prefix="/api/v1")
 app.include_router(auth.router, prefix="/api/v1")
