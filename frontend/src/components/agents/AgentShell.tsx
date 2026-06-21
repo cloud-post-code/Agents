@@ -291,10 +291,7 @@ export function AgentShell({ agent }: AgentShellProps) {
     const hasFile = !!attachedFile;
     if ((!text && !hasFile) || streaming || !wsRef.current || wsRef.current.readyState !== 1) return;
 
-    const messageContent = attachedFile
-      ? `${text ? text + "\n" : ""}[Attached ${attachedFile.type}: ${attachedFile.filename}]\n${attachedFile.url}`
-      : text;
-
+    // Display: clean badge, no raw URLs or base64
     const displayContent = attachedFile
       ? `${text ? text + " " : ""}📎 ${attachedFile.filename}`
       : text;
@@ -305,7 +302,20 @@ export function AgentShell({ agent }: AgentShellProps) {
     pendingRef.current = "";
     setMessages((prev) => [...prev, { role: "user", content: displayContent, id: crypto.randomUUID() }]);
     setStreaming(true);
-    wsRef.current.send(JSON.stringify({ type: "message", content: messageContent }));
+
+    // Send file metadata separately from text so backend can build the right prompt
+    wsRef.current.send(JSON.stringify({
+      type: "message",
+      content: text || `Please process the attached ${attachedFile?.type ?? "file"}: ${attachedFile?.filename ?? ""}`,
+      ...(attachedFile ? {
+        file: {
+          url: attachedFile.url,
+          type: attachedFile.type,
+          filename: attachedFile.filename,
+          file_id: attachedFile.fileId,
+        }
+      } : {}),
+    }));
   };
 
   const colorMap: Record<string, string> = {

@@ -142,6 +142,28 @@ async def agent_chat(websocket: WebSocket, role: str):
 
             user_content = data.get("content", "")
 
+            # If a file was attached, build a clear prompt the agent can act on directly
+            file_meta = data.get("file")
+            if file_meta:
+                file_url = file_meta.get("url", "")
+                file_type = file_meta.get("type", "file")
+                filename = file_meta.get("filename", "")
+                if file_type == "image":
+                    user_content = (
+                        f"{user_content}\n\n"
+                        f"[Image uploaded: {filename}]\n"
+                        f"Image URL: {file_url}\n"
+                        f"Call ingest_product_from_image with image_url='{file_url}'. "
+                        f"Ask the user for price, quantity, and unique_id before calling the tool."
+                    )
+                elif file_type == "csv":
+                    user_content = (
+                        f"{user_content}\n\n"
+                        f"[CSV uploaded: {filename}]\n"
+                        f"File URL: {file_url}\n"
+                        f"Call ingest_products_from_csv with csv_url='{file_url}'."
+                    )
+
             # Persist user message
             user_msg = AgentMessage(
                 session_id=session_id,
