@@ -85,25 +85,27 @@ def get_catalog_summary() -> dict:
 @tool
 def ingest_product_from_image(
     image_url: str,
-    name: str,
-    price: float,
-    quantity: int,
+    price: float = 0.0,
+    quantity: int = 0,
     sku: str = "",
-    description: str = "",
+    save: bool = False,
 ) -> dict:
     """
-    Add a product to the catalog from an uploaded image URL.
+    Analyze a product image with vision AI and optionally save to catalog.
+
+    When save=False (default): analyzes the image and returns extracted name,
+    description, and detected variants — does NOT save anything yet.
+    When save=True: saves the product to the catalog with provided price/quantity.
 
     Args:
         image_url: URL of the uploaded product image (from file upload)
-        name: Product name
-        price: Selling price
-        quantity: Stock quantity available
+        price: Selling price (required when save=True)
+        quantity: Stock quantity available (required when save=True)
         sku: Optional SKU / unique identifier
-        description: Optional product description
+        save: When True, saves the product; when False, returns extracted info only
 
     Returns:
-        Dict with created product info
+        Dict with extracted product info (and product_id if saved)
     """
     # Real execution handled by _execute_tool in base.py
     return {"status": "stub", "message": "handled by _execute_tool"}

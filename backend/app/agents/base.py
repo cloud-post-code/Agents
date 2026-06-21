@@ -205,25 +205,78 @@ class ArtisanAgent:
 
         if tool_name == "ingest_product_from_image" and db is not None and tenant_id:
             try:
-                from app.models.product import Product
-                from sqlalchemy import select as sa_select
+                from app.core.config import settings
 
-                # Accept either image_url (preferred — from file upload) or image_base64
-                image_url = args.get("image_url") or args.get("image_base64", "")
-                name = args.get("name") or args.get("product_name") or "Unnamed Product"
-                description = args.get("description", "")
+                image_url = args.get("image_url") or ""
                 price = args.get("price")
                 stock_qty = args.get("quantity") or args.get("stock_qty") or 0
-                sku = args.get("sku") or args.get("unique_id") or None
+                sku = args.get("sku") or None
+                do_save = args.get("save", False)
 
-                # If name looks like a base64 blob, use a default
-                if len(name) > 200:
-                    name = "Imported Product"
+                # --- Vision extraction step ---
+                api_key = settings.openai_api_key or os.environ.get("OPENAI_API_KEY", "")
+                extracted_name = "Imported Product"
+                extracted_description = ""
+                extracted_variants: list[dict] = []
+
+                if image_url and api_key and not api_key.startswith("sk-test"):
+                    try:
+                        import openai
+                        client = openai.AsyncOpenAI(api_key=api_key)
+                        vision_resp = await client.chat.completions.create(
+                            model="gpt-4o",
+                            messages=[
+                                {
+                                    "role": "user",
+                                    "content": [
+                                        {
+                                            "type": "text",
+                                            "text": (
+                                                "You are an e-commerce product expert. "
+                                                "Analyze this product image and respond with JSON only "
+                                                "(no markdown, no code fences). "
+                                                "Return: {\"name\": \"<short product name>\", "
+                                                "\"description\": \"<1-2 sentence product description>\", "
+                                                "\"variants\": [{\"name\": \"<variant label>\"}]} "
+                                                "Include variants only if the image clearly shows multiple "
+                                                "size, color, or style options; otherwise use an empty array."
+                                            ),
+                                        },
+                                        {
+                                            "type": "image_url",
+                                            "image_url": {"url": image_url, "detail": "low"},
+                                        },
+                                    ],
+                                }
+                            ],
+                            max_tokens=300,
+                        )
+                        raw = vision_resp.choices[0].message.content or ""
+                        vision_data = json.loads(raw)
+                        extracted_name = vision_data.get("name", extracted_name)
+                        extracted_description = vision_data.get("description", "")
+                        extracted_variants = vision_data.get("variants", [])
+                    except Exception as vision_exc:
+                        logger.warning(f"[ingest_product_from_image] vision extraction failed: {vision_exc}")
+
+                if not do_save:
+                    # Return extracted info without saving — agent will show confirm card
+                    return {
+                        "status": "extracted",
+                        "name": extracted_name,
+                        "description": extracted_description,
+                        "variants": extracted_variants,
+                        "image_url": image_url,
+                        "message": "Product info extracted. Show confirm_product card to collect price and quantity.",
+                    }
+
+                # --- Save step ---
+                from app.models.product import Product
 
                 product = Product(
                     tenant_id=uuid.UUID(tenant_id),
-                    name=name,
-                    description=description,
+                    name=extracted_name,
+                    description=extracted_description,
                     price=float(price) if price else None,
                     stock_qty=int(stock_qty),
                     sku=sku,

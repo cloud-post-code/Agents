@@ -71,13 +71,16 @@ async def search_catalog_impl(
     tenant_id: uuid.UUID,
     query: str,
     limit: int = 10,
-) -> list:
-    """Search products by name, description, or SKU."""
-    search_term = f"%{query.lower()}%"
-    
+) -> dict:
+    """Search products by name, description, or SKU with fuzzy partial matching."""
+    # Allow single-character queries — strip but never require length > 1
+    query = (query or "").strip()
+    search_term = f"%{query.lower()}%" if query else "%"
+
     result = await db.execute(
         select(Product)
         .where(Product.tenant_id == tenant_id)
+        .where(Product.deleted_at.is_(None))
         .where(
             (func.lower(Product.name).like(search_term)) |
             (func.lower(Product.description).like(search_term)) |
@@ -85,10 +88,10 @@ async def search_catalog_impl(
         )
         .limit(limit)
     )
-    
+
     products = result.scalars().all()
-    
-    return [
+
+    items = [
         {
             "id": str(product.id),
             "name": product.name,
@@ -99,3 +102,27 @@ async def search_catalog_impl(
         }
         for product in products
     ]
+
+    # "Did you mean" hint when no results and query is non-empty
+    did_you_mean: list[str] = []
+    if not items and query:
+        # Fetch all product names and find partial matches by word overlap
+        all_result = await db.execute(
+            select(Product.name)
+            .where(Product.tenant_id == tenant_id)
+            .where(Product.deleted_at.is_(None))
+            .limit(200)
+        )
+        all_names = [row[0] for row in all_result.fetchall() if row[0]]
+        query_words = set(query.lower().split())
+        for name in all_names:
+            name_words = set(name.lower().split())
+            if query_words & name_words:  # any word overlap
+                did_you_mean.append(name)
+            if len(did_you_mean) >= 3:
+                break
+
+    response: dict = {"results": items, "count": len(items)}
+    if did_you_mean:
+        response["did_you_mean"] = did_you_mean
+    return response
