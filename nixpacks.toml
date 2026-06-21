@@ -2,7 +2,7 @@
 nixPkgs = ["python312", "gcc"]
 
 [phases.install]
-cmds = ["python3 -m pip install -e 'backend/.[test]'"]
+cmds = ["python3 -m pip install -r backend/requirements.txt"]
 
 [phases.build]
 cmds = ["cd backend && python3 -m alembic upgrade head"]
