@@ -3,7 +3,17 @@
 import { useState, useEffect, useCallback } from "react";
 import { apiMe, apiLogout, AuthUser, AuthTenant } from "@/lib/auth";
 
-const TOKEN_KEY = "artisan_token";
+const COOKIE_KEY = "artisan_token";
+
+function getCookie(name: string): string | null {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie.match(new RegExp("(^| )" + name + "=([^;]+)"));
+  return match ? match[2] : null;
+}
+
+function deleteCookie(name: string) {
+  document.cookie = `${name}=; path=/; max-age=0`;
+}
 
 export function useAuth() {
   const [token, setToken] = useState<string | null>(null);
@@ -12,7 +22,7 @@ export function useAuth() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const t = localStorage.getItem(TOKEN_KEY);
+    const t = getCookie(COOKIE_KEY);
     if (t) {
       setToken(t);
       apiMe(t).then((data) => {
@@ -20,37 +30,34 @@ export function useAuth() {
           setUser(data.user);
           setTenant(data.tenant);
         } else {
-          localStorage.removeItem(TOKEN_KEY);
+          deleteCookie(COOKIE_KEY);
           setToken(null);
         }
-        setLoading(false);
-      });
+      }).finally(() => setLoading(false));
     } else {
       setLoading(false);
     }
   }, []);
 
   const login = useCallback((t: string, u: AuthUser, tn: AuthTenant) => {
-    localStorage.setItem(TOKEN_KEY, t);
     setToken(t);
     setUser(u);
     setTenant(tn);
   }, []);
 
   const setTokenOnly = useCallback((t: string) => {
-    localStorage.setItem(TOKEN_KEY, t);
     setToken(t);
   }, []);
 
   const logout = useCallback(async () => {
-    if (token) {
-      await apiLogout(token);
-    }
-    localStorage.removeItem(TOKEN_KEY);
+    const t = getCookie(COOKIE_KEY);
+    if (t) await apiLogout(t).catch(() => {});
+    deleteCookie(COOKIE_KEY);
     setToken(null);
     setUser(null);
     setTenant(null);
-  }, [token]);
+    window.location.href = "/login";
+  }, []);
 
   return { token, user, tenant, loading, login, setTokenOnly, logout, isAuthed: !!token };
 }
