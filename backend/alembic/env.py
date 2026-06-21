@@ -8,7 +8,7 @@ from app.core.config import settings
 from app.db.engine import Base
 import app.models.tenant  # noqa: F401
 import app.models.user    # noqa: F401
-import app.models.product  # noqa: F401
+import app.models.product  # noqa: F401  — also registers ProductVariant, StockAdjustment
 import app.models.agent    # noqa: F401
 import app.models.task     # noqa: F401
 import app.models.report   # noqa: F401
