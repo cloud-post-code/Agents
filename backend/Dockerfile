@@ -15,4 +15,4 @@ COPY backend/ .
 EXPOSE 8000
 
 ENTRYPOINT ["/bin/sh", "-c"]
-CMD ["alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["export REDIS_URL=\"redis://default:${REDIS_PASSWORD}@${REDIS_HOST:-localhost}:${REDIS_PORT:-6379}\" && alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

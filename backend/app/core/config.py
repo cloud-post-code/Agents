@@ -2,20 +2,15 @@ import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-def _build_redis_url() -> str:
-    """Build Redis URL from parts if REDIS_URL env var is incomplete."""
-    url = os.environ.get("REDIS_URL", "")
-    # If the URL looks complete (has a host after @), use it
-    if url and "railway.internal" in url:
-        return url
-    if url and url not in ("redis://", "redis://:") and len(url) > 10:
-        return url
-    # Fall back to building from parts
-    host = os.environ.get("REDIS_HOST", "localhost")
-    port = os.environ.get("REDIS_PORT", "6379")
-    password = os.environ.get("REDIS_PASSWORD", "")
+def _redis_url() -> str:
+    """Build Redis URL from Railway's native Redis env vars."""
+    # Railway exposes these directly from the Redis plugin
+    host = os.environ.get("REDISHOST") or os.environ.get("REDIS_HOST", "localhost")
+    port = os.environ.get("REDISPORT") or os.environ.get("REDIS_PORT", "6379")
+    password = os.environ.get("REDISPASSWORD") or os.environ.get("REDIS_PASSWORD", "")
+    user = os.environ.get("REDISUSER", "default")
     if password:
-        return f"redis://default:{password}@{host}:{port}"
+        return f"redis://{user}:{password}@{host}:{port}"
     return f"redis://{host}:{port}"
 
 
@@ -26,7 +21,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/artisan"
     database_url_sync: str = "postgresql://postgres:postgres@localhost:5432/artisan"
 
-    # Redis — built dynamically to work around Railway CLI variable encoding
+    # Redis — built from Railway's native plugin vars, not REDIS_URL (which CLI mangles)
     redis_url: str = ""
 
     # JWT
@@ -40,7 +35,7 @@ class Settings(BaseSettings):
 
     def model_post_init(self, __context) -> None:
         if not self.redis_url or self.redis_url in ("redis://", "redis://:"):
-            object.__setattr__(self, "redis_url", _build_redis_url())
+            object.__setattr__(self, "redis_url", _redis_url())
 
 
 settings = Settings()
