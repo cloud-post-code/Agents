@@ -135,6 +135,17 @@
       "skill": "coding-feature-execute",
       "proof_command": "pytest backend/tests/test_reports_marketer_pm.py -v",
       "path": "docs/features/15-report-templates-marketer-pm"
+    },
+    {
+      "id": "16-admin-agent-full",
+      "title": "Admin Agent \u2014 Full Wiring",
+      "status": "pending",
+      "priority": 16,
+      "skill": "coding-feature-execute",
+      "proof_command": "cd artisan-platform && pytest backend/tests/test_admin_agent.py -v",
+      "feature_dir": "docs/features/16-admin-agent-full",
+      "proof": "docs/features/16-admin-agent-full/PROOF.md",
+      "path": "docs/features/16-admin-agent-full"
     }
   ]
 }
