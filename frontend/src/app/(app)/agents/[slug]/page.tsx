@@ -15,5 +15,10 @@ export default async function AgentPage({ params }: PageProps) {
   const agent = getAgent(slug);
   if (!agent) notFound();
 
-  return <AgentShell agent={agent} />;
+  // -m-6 undoes the layout's p-6 so chat fills the full pane
+  return (
+    <div className="-m-6 h-[calc(100vh-0px)] flex flex-col overflow-hidden" style={{ height: "100dvh" }}>
+      <AgentShell agent={agent} />
+    </div>
+  );
 }
