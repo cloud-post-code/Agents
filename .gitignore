@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+dist/
+.env
+.env.local
+
+# Node
+node_modules/
+.next/
+.nuxt/
+dist/
+
+# Reports / uploads
+/app/reports/
+
+# IDE
+.DS_Store
+*.swp
+
+# Railway
+.railway/

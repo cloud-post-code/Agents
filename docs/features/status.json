@@ -1,0 +1,140 @@
+{
+  "version": 1,
+  "features": [
+    {
+      "id": "01-backend-foundation",
+      "title": "Backend Foundation",
+      "status": "pending",
+      "priority": 1,
+      "skill": "coding-python-backend",
+      "proof_command": "pytest backend/tests/test_foundation.py -v",
+      "path": "docs/features/01-backend-foundation"
+    },
+    {
+      "id": "02-database-schema-rls",
+      "title": "Database Schema + Row Level Security",
+      "status": "pending",
+      "priority": 2,
+      "skill": "coding-python-backend",
+      "proof_command": "pytest backend/tests/test_schema_rls.py -v",
+      "path": "docs/features/02-database-schema-rls"
+    },
+    {
+      "id": "03-auth-email-password",
+      "title": "Auth — Email/Password",
+      "status": "pending",
+      "priority": 3,
+      "skill": "coding-python-backend",
+      "proof_command": "pytest backend/tests/test_auth.py -v",
+      "path": "docs/features/03-auth-email-password"
+    },
+    {
+      "id": "04-frontend-skeleton",
+      "title": "Frontend Skeleton",
+      "status": "pending",
+      "priority": 4,
+      "skill": "coding-frontend",
+      "proof_command": "npx vitest run frontend/src/tests/skeleton.test.tsx",
+      "path": "docs/features/04-frontend-skeleton"
+    },
+    {
+      "id": "05-agent-chat-core",
+      "title": "Agent Chat Core",
+      "status": "pending",
+      "priority": 5,
+      "skill": "coding-python-backend",
+      "proof_command": "pytest backend/tests/test_agent_chat.py -v",
+      "path": "docs/features/05-agent-chat-core"
+    },
+    {
+      "id": "06-a2ui-fragment-system",
+      "title": "A2UI Fragment System",
+      "status": "pending",
+      "priority": 6,
+      "skill": "coding-frontend",
+      "proof_command": "npx vitest run frontend/src/components/a2ui/",
+      "path": "docs/features/06-a2ui-fragment-system"
+    },
+    {
+      "id": "07-task-queue-approval",
+      "title": "Task Queue + Approval Flow",
+      "status": "pending",
+      "priority": 7,
+      "skill": "coding-feature-execute",
+      "proof_command": "pytest backend/tests/test_task_queue.py -v",
+      "path": "docs/features/07-task-queue-approval"
+    },
+    {
+      "id": "08-notification-feed",
+      "title": "In-App Notification Feed",
+      "status": "pending",
+      "priority": 8,
+      "skill": "coding-feature-execute",
+      "proof_command": "pytest backend/tests/test_notifications.py -v",
+      "path": "docs/features/08-notification-feed"
+    },
+    {
+      "id": "09-calendar-standalone",
+      "title": "Standalone Calendar",
+      "status": "pending",
+      "priority": 9,
+      "skill": "coding-feature-execute",
+      "proof_command": "pytest backend/tests/test_calendar.py -v",
+      "path": "docs/features/09-calendar-standalone"
+    },
+    {
+      "id": "10-inventory-core",
+      "title": "Inventory Core",
+      "status": "pending",
+      "priority": 10,
+      "skill": "coding-feature-execute",
+      "proof_command": "pytest backend/tests/test_inventory.py -v",
+      "path": "docs/features/10-inventory-core"
+    },
+    {
+      "id": "11-facebook-sync",
+      "title": "Facebook Inventory Sync v1",
+      "status": "pending",
+      "priority": 11,
+      "skill": "coding-feature-execute",
+      "proof_command": "pytest backend/tests/test_facebook_sync.py -v",
+      "path": "docs/features/11-facebook-sync"
+    },
+    {
+      "id": "12-report-engine",
+      "title": "Report Engine",
+      "status": "pending",
+      "priority": 12,
+      "skill": "coding-feature-execute",
+      "proof_command": "pytest backend/tests/test_report_engine.py -v",
+      "path": "docs/features/12-report-engine"
+    },
+    {
+      "id": "13-report-templates-admin",
+      "title": "Report Templates — Admin (4 Reports)",
+      "status": "pending",
+      "priority": 13,
+      "skill": "coding-feature-execute",
+      "proof_command": "pytest backend/tests/test_reports_admin.py -v",
+      "path": "docs/features/13-report-templates-admin"
+    },
+    {
+      "id": "14-report-templates-strategist",
+      "title": "Report Templates — Strategist (5 Reports)",
+      "status": "pending",
+      "priority": 14,
+      "skill": "coding-feature-execute",
+      "proof_command": "pytest backend/tests/test_reports_strategist.py -v",
+      "path": "docs/features/14-report-templates-strategist"
+    },
+    {
+      "id": "15-report-templates-marketer-pm",
+      "title": "Report Templates — Marketer + PM (9 Reports)",
+      "status": "pending",
+      "priority": 15,
+      "skill": "coding-feature-execute",
+      "proof_command": "pytest backend/tests/test_reports_marketer_pm.py -v",
+      "path": "docs/features/15-report-templates-marketer-pm"
+    }
+  ]
+}

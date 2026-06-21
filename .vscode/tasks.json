@@ -1,0 +1,62 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Start Backend",
+      "type": "shell",
+      "command": "cd backend && source .venv/bin/activate && uvicorn app.main:app --reload --port 8000",
+      "group": "build",
+      "presentation": { "panel": "dedicated", "reveal": "always" },
+      "isBackground": true
+    },
+    {
+      "label": "Start Frontend",
+      "type": "shell",
+      "command": "cd frontend && npm run dev",
+      "group": "build",
+      "presentation": { "panel": "dedicated", "reveal": "always" },
+      "isBackground": true
+    },
+    {
+      "label": "Start Celery Worker",
+      "type": "shell",
+      "command": "cd backend && source .venv/bin/activate && celery -A app.worker worker --loglevel=info",
+      "group": "build",
+      "presentation": { "panel": "dedicated", "reveal": "always" },
+      "isBackground": true
+    },
+    {
+      "label": "Start All Services",
+      "dependsOn": ["Start Backend", "Start Frontend", "Start Celery Worker"],
+      "group": { "kind": "build", "isDefault": true }
+    },
+    {
+      "label": "Run Backend Tests",
+      "type": "shell",
+      "command": "cd backend && source .venv/bin/activate && pytest tests/ -v",
+      "group": "test",
+      "presentation": { "panel": "shared", "reveal": "always" }
+    },
+    {
+      "label": "Run Frontend Tests",
+      "type": "shell",
+      "command": "cd frontend && npx vitest run",
+      "group": "test",
+      "presentation": { "panel": "shared", "reveal": "always" }
+    },
+    {
+      "label": "Run Migrations",
+      "type": "shell",
+      "command": "cd backend && source .venv/bin/activate && alembic upgrade head",
+      "group": "build",
+      "presentation": { "panel": "shared", "reveal": "always" }
+    },
+    {
+      "label": "Start Docker Services",
+      "type": "shell",
+      "command": "docker compose up -d",
+      "group": "build",
+      "presentation": { "panel": "shared", "reveal": "always" }
+    }
+  ]
+}
