@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, createContext, useContext } from "react";
 import { apiMe, apiLogout, AuthUser, AuthTenant } from "@/lib/auth";
 
 const COOKIE_KEY = "artisan_token";
@@ -15,7 +15,26 @@ function deleteCookie(name: string) {
   document.cookie = `${name}=; path=/; max-age=0`;
 }
 
-export function useAuth() {
+export interface AuthContextValue {
+  token: string | null;
+  user: AuthUser | null;
+  tenant: AuthTenant | null;
+  loading: boolean;
+  isAuthed: boolean;
+  login: (t: string, u: AuthUser, tn: AuthTenant) => void;
+  setTokenOnly: (t: string) => void;
+  logout: () => Promise<void>;
+}
+
+export const AuthContext = createContext<AuthContextValue | null>(null);
+
+export function useAuth(): AuthContextValue {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth must be used inside AuthProvider");
+  return ctx;
+}
+
+export function useAuthState(): AuthContextValue {
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [tenant, setTenant] = useState<AuthTenant | null>(null);

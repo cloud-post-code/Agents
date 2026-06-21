@@ -19,8 +19,7 @@ const AGENT_DOT: Record<string, string> = {
 };
 
 export default function DashboardPage() {
-  const { user, tenant } = useAuth();
-  const { token } = useAuth();
+  const { user, tenant, token } = useAuth();
   const [pendingTasks, setPendingTasks] = useState(0);
   const [unreadNotifs, setUnreadNotifs] = useState(0);
   const [recentNotifs, setRecentNotifs] = useState<Array<{ id: string; type: string; created_at: string }>>([]);
