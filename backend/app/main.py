@@ -11,6 +11,8 @@ from app.db.engine import engine
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import logging
+    logging.warning(f"REDIS_URL resolved to: {settings.redis_url}")
     app.state.db_engine = engine
     app.state.redis = aioredis.from_url(settings.redis_url, decode_responses=True)
     yield
