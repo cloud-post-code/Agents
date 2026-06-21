@@ -6,3 +6,5 @@ dockerfilePath = "backend/Dockerfile"
 healthcheckPath = "/api/v1/health"
 healthcheckTimeout = 120
 restartPolicyType = "on_failure"
+
+# Frontend service config is in frontend/railway.json
