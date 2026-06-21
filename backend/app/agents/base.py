@@ -203,6 +203,47 @@ class ArtisanAgent:
                 logger.error(f"[search_catalog] failed: {exc}")
                 return {"error": str(exc)}
 
+        if tool_name == "ingest_product_from_image" and db is not None and tenant_id:
+            try:
+                from app.models.product import Product
+                from sqlalchemy import select as sa_select
+
+                # Accept either image_url (preferred — from file upload) or image_base64
+                image_url = args.get("image_url") or args.get("image_base64", "")
+                name = args.get("name") or args.get("product_name") or "Unnamed Product"
+                description = args.get("description", "")
+                price = args.get("price")
+                stock_qty = args.get("quantity") or args.get("stock_qty") or 0
+                sku = args.get("sku") or args.get("unique_id") or None
+
+                # If name looks like a base64 blob, use a default
+                if len(name) > 200:
+                    name = "Imported Product"
+
+                product = Product(
+                    tenant_id=uuid.UUID(tenant_id),
+                    name=name,
+                    description=description,
+                    price=float(price) if price else None,
+                    stock_qty=int(stock_qty),
+                    sku=sku,
+                    image_url=image_url if image_url.startswith("http") else None,
+                )
+                db.add(product)
+                await db.commit()
+                await db.refresh(product)
+                return {
+                    "status": "success",
+                    "product_id": str(product.id),
+                    "name": product.name,
+                    "price": float(product.price) if product.price else None,
+                    "stock_qty": product.stock_qty,
+                    "message": f"Added '{product.name}' to your catalog.",
+                }
+            except Exception as exc:
+                logger.error(f"[ingest_product_from_image] failed: {exc}")
+                return {"status": "error", "error": str(exc)}
+
         if tool_name == "render_ui":
             return {
                 "surface": args.get("component", args.get("surface", "unknown")),

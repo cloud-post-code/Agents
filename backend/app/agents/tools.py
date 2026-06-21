@@ -84,34 +84,29 @@ def get_catalog_summary() -> dict:
 
 @tool
 def ingest_product_from_image(
-    image_base64: str,
+    image_url: str,
+    name: str,
     price: float,
     quantity: int,
-    unique_id: str,
-    sku: str = ""
+    sku: str = "",
+    description: str = "",
 ) -> dict:
     """
-    Ingest a product from an uploaded image.
-    
-    The agent will extract product name, description, and tags from the image.
-    User must provide: price, quantity, and unique_id.
-    SKU is optional.
-    
+    Add a product to the catalog from an uploaded image URL.
+
     Args:
-        image_base64: Base64-encoded image data
-        price: Product selling price
-        quantity: Stock quantity
-        unique_id: Unique product identifier (must be unique)
-        sku: Optional SKU code (must be unique if provided)
-    
+        image_url: URL of the uploaded product image (from file upload)
+        name: Product name
+        price: Selling price
+        quantity: Stock quantity available
+        sku: Optional SKU / unique identifier
+        description: Optional product description
+
     Returns:
-        Dict with created product info or error
+        Dict with created product info
     """
-    return {
-        "status": "success",
-        "message": "Product ingestion tool called - implementation needed",
-        "product_id": "stub-product-id",
-    }
+    # Real execution handled by _execute_tool in base.py
+    return {"status": "stub", "message": "handled by _execute_tool"}
 
 
 @tool
