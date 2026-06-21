@@ -67,18 +67,30 @@ async def _get_or_create_session(
     return session
 
 
+import re as _re
+
+_BASE64_PATTERN = _re.compile(r'data:[^;]+;base64,[A-Za-z0-9+/=]{100,}', _re.DOTALL)
+
+
+def _strip_base64(text: str) -> str:
+    """Replace any embedded base64 data URIs with a short placeholder."""
+    return _BASE64_PATTERN.sub('[image data removed]', text)
+
+
 async def _load_context_window(
     db: AsyncSession, session_id: uuid.UUID
 ) -> list[dict]:
-    """Load the last CONTEXT_WINDOW_MESSAGES messages, oldest-first, for LLM context."""
+    """Load the last CONTEXT_WINDOW_MESSAGES messages, oldest-first, for LLM context.
+    Base64 data URIs are stripped to prevent context overflow."""
     result = await db.execute(
         select(AgentMessage)
         .where(AgentMessage.session_id == session_id)
+        .where(AgentMessage.role.in_(["user", "assistant"]))
         .order_by(AgentMessage.created_at.desc())
         .limit(CONTEXT_WINDOW_MESSAGES)
     )
     msgs = list(reversed(result.scalars().all()))
-    return [{"role": m.role, "content": m.content or ""} for m in msgs]
+    return [{"role": m.role, "content": _strip_base64(m.content or "")} for m in msgs]
 
 
 @router.websocket("/ws/agent/{role}/chat")
@@ -140,7 +152,7 @@ async def agent_chat(websocket: WebSocket, role: str):
             if data.get("type") != "message":
                 continue
 
-            user_content = data.get("content", "")
+            user_content = _strip_base64(data.get("content", ""))
 
             # If a file was attached, build a clear prompt the agent can act on directly
             file_meta = data.get("file")

@@ -352,11 +352,14 @@ export function AgentShell({ agent }: AgentShellProps) {
   };
   const agentColor = colorMap[agent.color] || "bg-gray-600";
 
-  // Render message content — replace image URLs with actual <img> tags
+  // Render message content — strip base64 blobs, replace image URLs with <img>
   const renderMessageContent = (content: string) => {
+    // Remove any base64 data URIs (leftover from before the upload fix)
+    const cleaned = content.replace(/data:[^;]+;base64,[A-Za-z0-9+/=\n]{50,}/g, "").trim();
+
     const urlRegex = /(https?:\/\/\S+\.(jpg|jpeg|png|webp|gif|avif)(\?\S*)?)/gi;
-    const parts = content.split(urlRegex);
-    if (parts.length === 1) return content; // no image URLs found
+    const parts = cleaned.split(urlRegex);
+    if (parts.length === 1) return cleaned || null;
     return parts.map((part, i) => {
       if (/^https?:\/\/.+\.(jpg|jpeg|png|webp|gif|avif)/i.test(part)) {
         return (
@@ -364,7 +367,6 @@ export function AgentShell({ agent }: AgentShellProps) {
           <img key={i} src={part} alt="Uploaded image" className="max-w-full rounded-xl mt-2 max-h-64 object-cover" />
         );
       }
-      // Filter out the capture groups (indices 1,2 from the regex)
       if (/^\.(jpg|jpeg|png|webp|gif|avif)$/i.test(part) || part.startsWith("?")) return null;
       return part || null;
     });
