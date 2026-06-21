@@ -84,6 +84,19 @@ async def approve_task(
         decided_at=datetime.now(timezone.utc),
     )
     db.add(approval)
+
+    # Auto-create calendar event when task has a due date
+    if task.due_at:
+        from app.models.calendar import CalendarEvent
+        event = CalendarEvent(
+            tenant_id=task.tenant_id,
+            title=task.title,
+            starts_at=task.due_at,
+            created_by=str(task.created_by) if task.created_by else None,
+            related_task_id=task.id,
+        )
+        db.add(event)
+
     await db.commit()
     await db.refresh(task)
     return task
