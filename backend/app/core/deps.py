@@ -36,10 +36,15 @@ async def get_current_user(
     tenant_id = payload.get("tenant_id")
     user_id = payload.get("sub")
 
-    # Check Redis blocklist
-    redis = request.app.state.redis
-    if jti and await redis.exists(f"blocklist:{jti}"):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token revoked")
+    # Check Redis blocklist — fail-open if Redis is unavailable
+    try:
+        redis = request.app.state.redis
+        if jti and await redis.exists(f"blocklist:{jti}"):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token revoked")
+    except HTTPException:
+        raise
+    except Exception:
+        pass  # Redis down: skip blocklist check, token is still valid
 
     # Set tenant context on DB connection
     await db.execute(text(f"SET LOCAL app.tenant_id = '{tenant_id}'"))

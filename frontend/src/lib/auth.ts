@@ -51,19 +51,19 @@ export async function apiLogin(email: string, password: string) {
   return res.json() as Promise<{ token: string; onboarding: boolean }>;
 }
 
-export async function apiMe(token: string): Promise<{ user: AuthUser; tenant: AuthTenant } | null> {
+export async function apiMe(token: string): Promise<{ user: AuthUser; tenant: AuthTenant } | null | "unavailable"> {
   try {
     const res = await fetch(`${API_BASE}/api/v1/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    // 401/403 = bad token, clear session. 5xx/network = backend down, keep session.
+    // 401/403 = bad/expired token — clear session
     if (res.status === 401 || res.status === 403) return null;
-    if (!res.ok) throw new Error("server_error");
+    // 5xx = backend error — keep session, show as unavailable
+    if (!res.ok) return "unavailable";
     return res.json();
-  } catch (e: any) {
-    if (e?.message === "server_error") throw e;
-    // Network error or CORS — don't wipe the session, treat as transient
-    throw new Error("network_error");
+  } catch {
+    // Network error / CORS — keep session, backend is transiently down
+    return "unavailable";
   }
 }
 
