@@ -190,6 +190,36 @@ class ArtisanAgent:
                 logger.error(f"[create_task] DB write failed: {exc}")
                 return {"task_id": "error", "error": str(exc)}
 
+        # Product manager tools with real implementations
+        if tool_name == "get_product_count" and db is not None and tenant_id:
+            from app.services.product_tools import get_product_count_impl
+            try:
+                return await get_product_count_impl(db=db, tenant_id=uuid.UUID(tenant_id))
+            except Exception as exc:
+                logger.error(f"[get_product_count] failed: {exc}")
+                return {"total_products": 0, "error": str(exc)}
+
+        if tool_name == "get_catalog_summary" and db is not None and tenant_id:
+            from app.services.product_tools import get_catalog_summary_impl
+            try:
+                return await get_catalog_summary_impl(db=db, tenant_id=uuid.UUID(tenant_id))
+            except Exception as exc:
+                logger.error(f"[get_catalog_summary] failed: {exc}")
+                return {"error": str(exc)}
+
+        if tool_name == "search_catalog" and db is not None and tenant_id:
+            from app.services.product_tools import search_catalog_impl
+            try:
+                return await search_catalog_impl(
+                    db=db,
+                    tenant_id=uuid.UUID(tenant_id),
+                    query=args.get("query", ""),
+                    limit=args.get("limit", 10),
+                )
+            except Exception as exc:
+                logger.error(f"[search_catalog] failed: {exc}")
+                return {"error": str(exc)}
+
         if tool_name == "render_ui":
             return {
                 "surface": args.get("component", args.get("surface", "unknown")),
