@@ -20,11 +20,17 @@ def get_tools_for_role(role: str) -> list:
 
 def get_llm(role: str) -> BaseChatModel:
     """Return LLM instance. Falls back to fake LLM in test/no-key environment."""
+    import logging
     api_key = os.environ.get("OPENAI_API_KEY", "")
-    if not api_key or api_key.startswith("sk-test") or os.environ.get("APP_ENV") == "test":
+    app_env = os.environ.get("APP_ENV", "")
+    logging.warning(f"[get_llm] role={role} app_env={app_env} key_prefix={api_key[:7] if api_key else 'MISSING'}")
+
+    if not api_key or api_key.startswith("sk-test") or app_env == "test":
+        logging.warning("[get_llm] using FakeChatModel")
         from app.agents.fake_llm import FakeChatModel
         return FakeChatModel()
 
+    logging.warning("[get_llm] using ChatOpenAI gpt-4o-mini")
     from langchain_openai import ChatOpenAI
     return ChatOpenAI(model="gpt-4o-mini", streaming=True, temperature=0.7, api_key=api_key)
 
