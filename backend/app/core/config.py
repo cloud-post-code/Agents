@@ -4,11 +4,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 def _redis_url() -> str:
     """Build Redis URL — tries multiple Railway env var patterns."""
-    # Direct full URL (set via GraphQL API)
+    # Use REDIS_FULL_URL only if it looks fully expanded (no $ placeholders)
     full = os.environ.get("REDIS_FULL_URL", "")
-    if full and len(full) > 15:
+    if full and len(full) > 15 and "$" not in full:
         return full
-    # Railway native plugin individual vars
+    # Build from Railway native plugin individual vars
     host = os.environ.get("REDISHOST") or os.environ.get("REDIS_HOST", "localhost")
     port = os.environ.get("REDISPORT") or os.environ.get("REDIS_PORT", "6379")
     password = os.environ.get("REDISPASSWORD") or os.environ.get("REDIS_PASSWORD", "")
