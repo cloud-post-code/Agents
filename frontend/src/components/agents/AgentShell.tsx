@@ -5,14 +5,57 @@ import { AgentConfig } from "@/lib/agents";
 import { useAuth } from "@/hooks/useAuth";
 import { getApiBase } from "@/lib/api";
 
+type MessageKind = "user" | "assistant" | "task_created" | "a2ui";
+
 interface Message {
-  role: "user" | "assistant";
+  role: MessageKind;
   content: string;
   id: string;
+  payload?: Record<string, unknown>;
 }
 
 interface AgentShellProps {
   agent: AgentConfig;
+}
+
+function TaskCreatedCard({ payload }: { payload: Record<string, unknown> }) {
+  const title = String(payload.title ?? "");
+  const taskId = payload.task_id ? String(payload.task_id) : null;
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm">
+      <div className="flex items-center gap-2 mb-1">
+        <span className="text-amber-600 font-semibold">✓ Task Created</span>
+        <span className="ml-auto text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">
+          pending approval
+        </span>
+      </div>
+      <p className="text-gray-700 font-medium">{title}</p>
+      {taskId && (
+        <p className="text-xs text-gray-400 mt-1 font-mono">id: {taskId}</p>
+      )}
+      <p className="text-xs text-gray-500 mt-2">
+        Review and approve this in your{" "}
+        <a href="/tasks" className="text-amber-600 underline">Tasks queue</a>.
+      </p>
+    </div>
+  );
+}
+
+function A2UICard({ payload }: { payload: Record<string, unknown> }) {
+  const surface = String(payload.surface ?? payload.component ?? "surface");
+  const props = (payload.props ?? {}) as Record<string, unknown>;
+  return (
+    <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm">
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-blue-600 font-semibold text-xs uppercase tracking-wide">
+          {surface}
+        </span>
+      </div>
+      <pre className="text-xs text-gray-600 whitespace-pre-wrap overflow-x-auto bg-white rounded-lg p-3 border border-blue-100">
+        {JSON.stringify(props, null, 2)}
+      </pre>
+    </div>
+  );
 }
 
 export function AgentShell({ agent }: AgentShellProps) {
@@ -28,7 +71,6 @@ export function AgentShell({ agent }: AgentShellProps) {
   const tokenRef = useRef<string | null>(null);
   const roleRef = useRef<string>(agent.role);
 
-  // Keep refs in sync without triggering reconnects
   tokenRef.current = token;
   roleRef.current = agent.role;
 
@@ -53,6 +95,7 @@ export function AgentShell({ agent }: AgentShellProps) {
 
     ws.onmessage = (e) => {
       const data = JSON.parse(e.data);
+
       if (data.type === "token") {
         pendingRef.current += data.content;
         setMessages((prev) => {
@@ -62,12 +105,49 @@ export function AgentShell({ agent }: AgentShellProps) {
           }
           return [...prev, { role: "assistant", content: pendingRef.current, id: "streaming" }];
         });
+
+      } else if (data.type === "task_created") {
+        // Finalise the streaming text bubble first, then add task card
+        setMessages((prev) => {
+          const finalised = prev.map((m) =>
+            m.id === "streaming" ? { ...m, id: crypto.randomUUID() } : m
+          );
+          return [
+            ...finalised,
+            {
+              role: "task_created" as MessageKind,
+              content: "",
+              id: crypto.randomUUID(),
+              payload: data.payload ?? {},
+            },
+          ];
+        });
+        pendingRef.current = "";
+
+      } else if (data.type === "a2ui") {
+        setMessages((prev) => {
+          const finalised = prev.map((m) =>
+            m.id === "streaming" ? { ...m, id: crypto.randomUUID() } : m
+          );
+          return [
+            ...finalised,
+            {
+              role: "a2ui" as MessageKind,
+              content: "",
+              id: crypto.randomUUID(),
+              payload: data.payload ?? {},
+            },
+          ];
+        });
+        pendingRef.current = "";
+
       } else if (data.type === "done") {
         pendingRef.current = "";
         setMessages((prev) =>
-          prev.map((m) => m.id === "streaming" ? { ...m, id: crypto.randomUUID() } : m)
+          prev.map((m) => (m.id === "streaming" ? { ...m, id: crypto.randomUUID() } : m))
         );
         setStreaming(false);
+
       } else if (data.type === "error") {
         setError(data.message || "Agent error");
         setStreaming(false);
@@ -76,7 +156,6 @@ export function AgentShell({ agent }: AgentShellProps) {
 
     wsRef.current = ws;
     return () => ws.close();
-  // Only connect once when token becomes available — never reconnect on close
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [!!token]);
 
@@ -126,25 +205,55 @@ export function AgentShell({ agent }: AgentShellProps) {
             <p className="text-gray-400 text-sm">{agent.description}</p>
           </div>
         )}
-        {messages.map((msg) => (
-          <div key={msg.id} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-            {msg.role === "assistant" && (
-              <div className={`w-6 h-6 rounded-full ${agentColor} flex items-center justify-center text-white text-xs mr-2 mt-1 shrink-0`}>
-                {agent.name[0]}
+
+        {messages.map((msg) => {
+          if (msg.role === "task_created") {
+            return (
+              <div key={msg.id} className="flex justify-start">
+                <div className={`w-6 h-6 rounded-full ${agentColor} flex items-center justify-center text-white text-xs mr-2 mt-1 shrink-0`}>
+                  {agent.name[0]}
+                </div>
+                <div className="max-w-[78%]">
+                  <TaskCreatedCard payload={msg.payload ?? {}} />
+                </div>
               </div>
-            )}
-            <div className={`max-w-[78%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap leading-relaxed ${
-              msg.role === "user"
-                ? "bg-blue-600 text-white rounded-tr-sm"
-                : "bg-white border shadow-sm rounded-tl-sm"
-            }`}>
-              {msg.content}
-              {msg.id === "streaming" && (
-                <span className="inline-block w-1.5 h-3.5 bg-gray-400 animate-pulse ml-1 rounded-sm align-middle" />
+            );
+          }
+
+          if (msg.role === "a2ui") {
+            return (
+              <div key={msg.id} className="flex justify-start">
+                <div className={`w-6 h-6 rounded-full ${agentColor} flex items-center justify-center text-white text-xs mr-2 mt-1 shrink-0`}>
+                  {agent.name[0]}
+                </div>
+                <div className="max-w-[78%]">
+                  <A2UICard payload={msg.payload ?? {}} />
+                </div>
+              </div>
+            );
+          }
+
+          return (
+            <div key={msg.id} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+              {msg.role === "assistant" && (
+                <div className={`w-6 h-6 rounded-full ${agentColor} flex items-center justify-center text-white text-xs mr-2 mt-1 shrink-0`}>
+                  {agent.name[0]}
+                </div>
               )}
+              <div className={`max-w-[78%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap leading-relaxed ${
+                msg.role === "user"
+                  ? "bg-blue-600 text-white rounded-tr-sm"
+                  : "bg-white border shadow-sm rounded-tl-sm"
+              }`}>
+                {msg.content}
+                {msg.id === "streaming" && (
+                  <span className="inline-block w-1.5 h-3.5 bg-gray-400 animate-pulse ml-1 rounded-sm align-middle" />
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
+
         {error && <p className="text-center text-xs text-red-500">{error}</p>}
         <div ref={bottomRef} />
       </div>

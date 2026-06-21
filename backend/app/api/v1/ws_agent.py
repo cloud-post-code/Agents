@@ -132,11 +132,24 @@ async def agent_chat(websocket: WebSocket, role: str):
             db.add(user_msg)
             await db.commit()
 
-            # Stream response
+            # Stream agent events — tokens, tool results, a2ui surfaces
             full_response = ""
-            async for token in agent.stream(user_content, conversation_history):
-                full_response += token
-                await websocket.send_text(json.dumps({"type": "token", "content": token}))
+            async for event in agent.run(
+                user_content,
+                conversation_history,
+                tenant_id=tenant_id,
+                user_id=user_id,
+                db=db,
+            ):
+                if event.type == "token":
+                    full_response += event.content
+                    await websocket.send_text(json.dumps({"type": "token", "content": event.content}))
+                elif event.type == "task_created":
+                    await websocket.send_text(json.dumps({"type": "task_created", "payload": event.payload}))
+                elif event.type == "a2ui":
+                    await websocket.send_text(json.dumps({"type": "a2ui", "payload": event.payload}))
+                elif event.type == "done":
+                    pass  # sent explicitly below
 
             # Persist assistant message
             asst_msg = AgentMessage(
