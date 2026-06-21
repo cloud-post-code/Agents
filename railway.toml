@@ -1,0 +1,22 @@
+[build]
+builder = "nixpacks"
+
+[[services]]
+name = "backend"
+source = "backend"
+startCommand = "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+
+[[services]]
+name = "worker"
+source = "backend"
+startCommand = "celery -A app.worker worker --loglevel=info --concurrency=2"
+
+[[services]]
+name = "beat"
+source = "backend"
+startCommand = "celery -A app.worker beat --loglevel=info"
+
+[[services]]
+name = "frontend"
+source = "frontend"
+startCommand = "node .next/standalone/server.js"
