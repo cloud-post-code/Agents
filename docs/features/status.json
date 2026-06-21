@@ -21,7 +21,7 @@
     },
     {
       "id": "03-auth-email-password",
-      "title": "Auth — Email/Password",
+      "title": "Auth \u2014 Email/Password",
       "status": "passing",
       "priority": 3,
       "skill": "coding-python-backend",
@@ -67,7 +67,7 @@
     {
       "id": "08-notification-feed",
       "title": "In-App Notification Feed",
-      "status": "pending",
+      "status": "passing",
       "priority": 8,
       "skill": "coding-feature-execute",
       "proof_command": "pytest backend/tests/test_notifications.py -v",
@@ -76,7 +76,7 @@
     {
       "id": "09-calendar-standalone",
       "title": "Standalone Calendar",
-      "status": "pending",
+      "status": "passing",
       "priority": 9,
       "skill": "coding-feature-execute",
       "proof_command": "pytest backend/tests/test_calendar.py -v",
@@ -85,7 +85,7 @@
     {
       "id": "10-inventory-core",
       "title": "Inventory Core",
-      "status": "pending",
+      "status": "passing",
       "priority": 10,
       "skill": "coding-feature-execute",
       "proof_command": "pytest backend/tests/test_inventory.py -v",
@@ -94,7 +94,7 @@
     {
       "id": "11-facebook-sync",
       "title": "Facebook Inventory Sync v1",
-      "status": "pending",
+      "status": "passing",
       "priority": 11,
       "skill": "coding-feature-execute",
       "proof_command": "pytest backend/tests/test_facebook_sync.py -v",
@@ -103,7 +103,7 @@
     {
       "id": "12-report-engine",
       "title": "Report Engine",
-      "status": "pending",
+      "status": "passing",
       "priority": 12,
       "skill": "coding-feature-execute",
       "proof_command": "pytest backend/tests/test_report_engine.py -v",
@@ -111,8 +111,8 @@
     },
     {
       "id": "13-report-templates-admin",
-      "title": "Report Templates — Admin (4 Reports)",
-      "status": "pending",
+      "title": "Report Templates \u2014 Admin (4 Reports)",
+      "status": "passing",
       "priority": 13,
       "skill": "coding-feature-execute",
       "proof_command": "pytest backend/tests/test_reports_admin.py -v",
@@ -120,8 +120,8 @@
     },
     {
       "id": "14-report-templates-strategist",
-      "title": "Report Templates — Strategist (5 Reports)",
-      "status": "pending",
+      "title": "Report Templates \u2014 Strategist (5 Reports)",
+      "status": "passing",
       "priority": 14,
       "skill": "coding-feature-execute",
       "proof_command": "pytest backend/tests/test_reports_strategist.py -v",
@@ -129,8 +129,8 @@
     },
     {
       "id": "15-report-templates-marketer-pm",
-      "title": "Report Templates — Marketer + PM (9 Reports)",
-      "status": "pending",
+      "title": "Report Templates \u2014 Marketer + PM (9 Reports)",
+      "status": "passing",
       "priority": 15,
       "skill": "coding-feature-execute",
       "proof_command": "pytest backend/tests/test_reports_marketer_pm.py -v",
