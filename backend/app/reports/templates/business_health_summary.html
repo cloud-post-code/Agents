@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block title %}Business Health Summary{% endblock %}
+{% block date %}{% endblock %}
+{% block content %}
+<p>{{ data | default({}) }}</p>
+{% endblock %}

@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block title %}Top Search Terms{% endblock %}
+{% block date %}{% endblock %}
+{% block content %}
+<p>{{ data | default({}) }}</p>
+{% endblock %}
