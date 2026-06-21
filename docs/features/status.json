@@ -4,7 +4,7 @@
     {
       "id": "01-backend-foundation",
       "title": "Backend Foundation",
-      "status": "pending",
+      "status": "passing",
       "priority": 1,
       "skill": "coding-python-backend",
       "proof_command": "pytest backend/tests/test_foundation.py -v",
@@ -13,7 +13,7 @@
     {
       "id": "02-database-schema-rls",
       "title": "Database Schema + Row Level Security",
-      "status": "pending",
+      "status": "passing",
       "priority": 2,
       "skill": "coding-python-backend",
       "proof_command": "pytest backend/tests/test_schema_rls.py -v",
@@ -22,7 +22,7 @@
     {
       "id": "03-auth-email-password",
       "title": "Auth — Email/Password",
-      "status": "pending",
+      "status": "passing",
       "priority": 3,
       "skill": "coding-python-backend",
       "proof_command": "pytest backend/tests/test_auth.py -v",
