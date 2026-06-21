@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     app_env: str = "development"
     debug: bool = False
 
+    # CORS — comma-separated list of allowed origins, e.g. https://frontend.up.railway.app
+    cors_origins: str = ""
+
     def model_post_init(self, __context) -> None:
         if not self.redis_url or self.redis_url in ("redis://", "redis://:"):
             object.__setattr__(self, "redis_url", _redis_url())
