@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { AgentConfig } from "@/lib/agents";
 import { useAuth } from "@/hooks/useAuth";
 import { apiFetch, getApiBase } from "@/lib/api";
+import { SaveProfileCard } from "@/components/a2ui/surfaces/SaveProfileCard";
 
 type MessageKind = "user" | "assistant" | "task_created" | "a2ui" | "card";
 
@@ -52,6 +53,12 @@ function TaskCreatedCard({ payload }: { payload: Record<string, unknown> }) {
 function A2UICard({ payload }: { payload: Record<string, unknown> }) {
   const surface = String(payload.surface ?? payload.component ?? "surface");
   const props = (payload.props ?? {}) as Record<string, unknown>;
+
+  // save_profile surface renders an interactive save card
+  if (surface === "save_profile") {
+    return <SaveProfileCard {...props} />;
+  }
+
   return (
     <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm">
       <div className="flex items-center gap-2 mb-2">
