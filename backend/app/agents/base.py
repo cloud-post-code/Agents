@@ -21,8 +21,11 @@ def get_tools_for_role(role: str) -> list:
 def get_llm(role: str) -> BaseChatModel:
     """Return LLM instance. Falls back to fake LLM in test/no-key environment."""
     import logging
-    api_key = os.environ.get("OPENAI_API_KEY", "")
-    app_env = os.environ.get("APP_ENV", "")
+    from app.core.config import settings
+
+    # Read from settings (which merges Railway env vars) then fall back to os.environ
+    api_key = settings.openai_api_key or os.environ.get("OPENAI_API_KEY", "")
+    app_env = settings.app_env
     logging.warning(f"[get_llm] role={role} app_env={app_env} key_prefix={api_key[:7] if api_key else 'MISSING'}")
 
     if not api_key or api_key.startswith("sk-test") or app_env == "test":

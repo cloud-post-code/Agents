@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     app_env: str = "development"
     debug: bool = False
 
+    # AI
+    openai_api_key: str = ""
+
     # CORS — comma-separated list of allowed origins, e.g. https://frontend.up.railway.app
     cors_origins: str = ""
 
