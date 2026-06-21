@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AgentConfig } from "@/lib/agents";
 import { useAuth } from "@/hooks/useAuth";
 import { getApiBase } from "@/lib/api";
@@ -25,19 +25,31 @@ export function AgentShell({ agent }: AgentShellProps) {
   const wsRef = useRef<WebSocket | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const pendingRef = useRef<string>("");
+  const tokenRef = useRef<string | null>(null);
+  const roleRef = useRef<string>(agent.role);
 
-  const connect = useCallback(() => {
+  // Keep refs in sync without triggering reconnects
+  tokenRef.current = token;
+  roleRef.current = agent.role;
+
+  useEffect(() => {
     if (!token) return;
+
     const base = getApiBase().replace(/^https/, "wss").replace(/^http/, "ws");
-    const ws = new WebSocket(`${base}/ws/agent/${agent.role}/chat`);
+    const ws = new WebSocket(`${base}/ws/agent/${roleRef.current}/chat`);
 
     ws.onopen = () => {
       setConnected(true);
       setError(null);
-      ws.send(JSON.stringify({ type: "auth", token }));
+      ws.send(JSON.stringify({ type: "auth", token: tokenRef.current }));
     };
-    ws.onclose = () => { setConnected(false); wsRef.current = null; };
-    ws.onerror = () => setError("Connection lost");
+
+    ws.onclose = () => {
+      setConnected(false);
+      wsRef.current = null;
+    };
+
+    ws.onerror = () => setError("Connection lost. Refresh to retry.");
 
     ws.onmessage = (e) => {
       const data = JSON.parse(e.data);
@@ -53,7 +65,7 @@ export function AgentShell({ agent }: AgentShellProps) {
       } else if (data.type === "done") {
         pendingRef.current = "";
         setMessages((prev) =>
-          prev.map((m) => m.id === "streaming" ? { ...m, id: Date.now().toString() } : m)
+          prev.map((m) => m.id === "streaming" ? { ...m, id: crypto.randomUUID() } : m)
         );
         setStreaming(false);
       } else if (data.type === "error") {
@@ -63,12 +75,10 @@ export function AgentShell({ agent }: AgentShellProps) {
     };
 
     wsRef.current = ws;
-  }, [token, agent.role]);
-
-  useEffect(() => {
-    connect();
-    return () => wsRef.current?.close();
-  }, [connect]);
+    return () => ws.close();
+  // Only connect once when token becomes available — never reconnect on close
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!token]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -80,7 +90,7 @@ export function AgentShell({ agent }: AgentShellProps) {
     setInput("");
     setError(null);
     pendingRef.current = "";
-    setMessages((prev) => [...prev, { role: "user", content: text, id: Date.now().toString() }]);
+    setMessages((prev) => [...prev, { role: "user", content: text, id: crypto.randomUUID() }]);
     setStreaming(true);
     wsRef.current.send(JSON.stringify({ type: "message", content: text }));
   };
