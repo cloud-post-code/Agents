@@ -1,0 +1,6 @@
+name,sku,price,cost,description,stock_qty,unique_id
+"Handmade Lavender Soap",SOAP-001,12.00,5.00,"Natural lavender soap with essential oils",25,PROD-001
+"Artisan Candle - Vanilla",CANDLE-001,18.50,7.00,"Hand-poured vanilla scented candle",15,PROD-002
+"Ceramic Mug - Blue",MUG-BLUE-001,22.00,10.00,"Handcrafted ceramic mug in ocean blue",10,PROD-003
+"Wooden Cutting Board",WOOD-001,35.00,15.00,"Premium walnut cutting board",8,PROD-004
+"Knitted Scarf - Red",SCARF-R-001,28.00,12.00,"Warm wool scarf in deep red",12,PROD-005
