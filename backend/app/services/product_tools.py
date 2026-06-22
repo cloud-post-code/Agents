@@ -91,17 +91,28 @@ async def search_catalog_impl(
 
     products = result.scalars().all()
 
-    items = [
-        {
+    items = []
+    for product in products:
+        # Extract tags from metadata
+        tags = []
+        if product.extra_data and isinstance(product.extra_data, dict):
+            tags = product.extra_data.get("tags", [])
+        
+        # Build image URL (prefer image_url, fallback to base64 data URL)
+        image_url = product.image_url
+        if not image_url and product.image_data:
+            image_url = f"data:image/jpeg;base64,{product.image_data}"
+        
+        items.append({
             "id": str(product.id),
             "name": product.name,
             "sku": product.sku,
             "price": float(product.price) if product.price else None,
             "stock_qty": product.stock_qty,
             "description": product.description,
-        }
-        for product in products
-    ]
+            "image_url": image_url,  # Include image
+            "tags": tags,
+        })
 
     # "Did you mean" hint when no results and query is non-empty
     did_you_mean: list[str] = []

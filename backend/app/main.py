@@ -54,7 +54,7 @@ app.include_router(inventory.router, prefix="/api/v1")
 app.include_router(discounts.router, prefix="/api/v1")
 app.include_router(reports.router, prefix="/api/v1")
 app.include_router(upload.router, prefix="/api/v1")  # File upload for agent chat
+app.include_router(agent_history.router, prefix="/api/v1")  # Agent message history with pagination
 app.include_router(notifications.router)  # Uses full paths defined in router
 app.include_router(admin_profile.router)
-app.include_router(agent_history.router)
 app.include_router(ws_agent.router)  # WebSocket routes don't use /api/v1 prefix

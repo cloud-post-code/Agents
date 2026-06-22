@@ -20,7 +20,7 @@ from app.models.agent import AgentMessage, AgentSession
 
 router = APIRouter(tags=["ws-agent"])
 
-CONTEXT_WINDOW_MESSAGES = 50
+CONTEXT_WINDOW_MESSAGES = 10  # Only load 10 most recent messages initially
 
 _BASE64_PATTERN = _re.compile(r'data:[^;]+;base64,[A-Za-z0-9+/=]{100,}', _re.DOTALL)
 
