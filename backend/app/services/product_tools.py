@@ -91,15 +91,32 @@ async def search_catalog_impl(
 
     products = result.scalars().all()
 
+    # Load first image from product_images table for any products missing image_url
+    from app.models.product import ProductImage
+    product_ids = [p.id for p in products]
+    pi_result = await db.execute(
+        select(ProductImage.product_id, ProductImage.image_url)
+        .where(ProductImage.product_id.in_(product_ids))
+        .where(ProductImage.tenant_id == tenant_id)
+        .order_by(ProductImage.product_id, ProductImage.image_order)
+    )
+    pi_rows = pi_result.fetchall()
+    # Keep only the first image per product
+    pi_map: dict = {}
+    for row in pi_rows:
+        pid = str(row[0])
+        if pid not in pi_map:
+            pi_map[pid] = row[1]
+
     items = []
     for product in products:
         # Extract tags from metadata
         tags = []
         if product.extra_data and isinstance(product.extra_data, dict):
             tags = product.extra_data.get("tags", [])
-        
-        # Build image URL (prefer image_url, fallback to base64 data URL)
-        image_url = product.image_url
+
+        # Build image URL: product.image_url → product_images table → image_data base64
+        image_url = product.image_url or pi_map.get(str(product.id))
         if not image_url and product.image_data:
             image_url = f"data:image/jpeg;base64,{product.image_data}"
         
