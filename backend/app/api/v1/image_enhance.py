@@ -1,10 +1,11 @@
-"""AI image enhancement endpoint — generates enhanced product photos using GPT-image-1."""
+"""AI image enhancement — places product into a professional scene using OpenAI image editing."""
 from __future__ import annotations
 
 import logging
 import os
 from typing import Optional
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,26 +16,23 @@ from app.models.user import User
 router = APIRouter(prefix="/api/v1/enhance", tags=["image-enhance"])
 logger = logging.getLogger(__name__)
 
-ENHANCEMENT_SYSTEM_PROMPT = """[SYSTEM DIRECTIVE]
-You are an expert AI commercial photographer and composite artist. Your primary directive is to place the provided reference image of a product into a newly generated environment.
+# Concise prompt that stays well under the 32k character limit
+_ENHANCE_PROMPT_TEMPLATE = (
+    "Professional commercial product photograph. "
+    "Keep the product EXACTLY as-is — do not alter its shape, color, patterns, or details. "
+    "Place it in the following environment: {scene}. "
+    "Balanced studio lighting with realistic shadows. "
+    "Front-facing camera, sharp product focus, soft background depth-of-field. "
+    "Ultra-realistic, high-resolution, 1:1 aspect ratio."
+)
 
-Absolute Preservation: Do NOT alter, warp, restyle, or hallucinate any details on the product itself. Size, color, shape, and patterns must remain the same as the reference image.
-
-Sequential Coherence: When running batch generations, lock the random seed, lighting parameters, and environmental textures to maintain stylistic consistency across all outputs.
-
-[IMAGE GENERATION PROMPT]
-Use the provided reference image as the locked foreground subject. Generate the following environment strictly behind and around the product:
-
-A high-resolution, ultra-realistic product photograph. The environment, background surface, and surrounding props must strictly reflect the user's scene description. The lighting is a balanced, multi-point diffused studio lighting designed to highlight the product's natural form, textures, and true colors (unless specific moody lighting is heavily requested). Cast realistic, physically accurate shadows from the locked product onto the newly generated surface to integrate it seamlessly. The camera angle is front-facing with sharp focus on the anchor product and a natural depth-of-field blur applied only to the background environment. Aspect ratio: 1:1.
-
-[POST-GENERATION VERIFICATION]
-Compare the core product in the generated image against the original reference image. If any color shifting, shape alteration, or detail degradation has occurred on the product, discard and regenerate."""
+_DEFAULT_SCENE = "clean white studio background with soft natural shadows on a smooth surface"
 
 
 class EnhanceRequest(BaseModel):
     image_url: str
     scene_prompt: Optional[str] = None
-    count: int = 1  # 1-4 images
+    count: int = 1  # 1–4 images
 
 
 class EnhanceResponse(BaseModel):
@@ -55,30 +53,41 @@ async def enhance_product_image(
         raise HTTPException(status_code=503, detail="OpenAI API key not configured")
 
     count = max(1, min(4, body.count))
-    scene = body.scene_prompt or "clean white studio background with soft shadows"
-
-    full_prompt = (
-        f"{ENHANCEMENT_SYSTEM_PROMPT}\n\n"
-        f"[USER SCENE INJECTION]\nUser Prompt: {scene}\n\n"
-        f"Product image URL: {body.image_url}"
-    )
+    scene = (body.scene_prompt or _DEFAULT_SCENE).strip()[:500]  # cap scene length
+    prompt = _ENHANCE_PROMPT_TEMPLATE.format(scene=scene)
 
     try:
         import openai
-        client = openai.AsyncOpenAI(api_key=api_key)
 
+        # Download the source image so we can send it as bytes to images.edit
+        async with httpx.AsyncClient(timeout=30) as http:
+            img_response = await http.get(body.image_url)
+            img_response.raise_for_status()
+            image_bytes = img_response.content
+
+        # Determine content type
+        content_type = img_response.headers.get("content-type", "image/png")
+        ext = "png"
+        if "jpeg" in content_type or "jpg" in content_type:
+            ext = "jpeg"
+        elif "webp" in content_type:
+            ext = "webp"
+
+        client = openai.AsyncOpenAI(api_key=api_key)
         enhanced_urls: list[str] = []
+
         for _ in range(count):
-            response = await client.images.generate(
+            # Use images.edit which accepts a reference image and modifies it
+            response = await client.images.edit(
                 model="gpt-image-1",
-                prompt=full_prompt,
+                image=(f"product.{ext}", image_bytes, content_type),
+                prompt=prompt,
                 n=1,
                 size="1024x1024",
             )
             if response.data and response.data[0].url:
                 enhanced_urls.append(response.data[0].url)
             elif response.data and response.data[0].b64_json:
-                # Store base64 as data URI
                 enhanced_urls.append(f"data:image/png;base64,{response.data[0].b64_json}")
 
         if not enhanced_urls:
@@ -89,3 +98,6 @@ async def enhance_product_image(
     except openai.OpenAIError as e:
         logger.error(f"[enhance_product_image] OpenAI error: {e}")
         raise HTTPException(status_code=502, detail=f"Image generation failed: {str(e)}")
+    except httpx.HTTPError as e:
+        logger.error(f"[enhance_product_image] Failed to download source image: {e}")
+        raise HTTPException(status_code=400, detail=f"Could not download product image: {str(e)}")
