@@ -92,23 +92,24 @@ async def _handle_image_upload(
     tenant_id_str: str,
     db: AsyncSession,
     websocket: WebSocket,
+    price: float | None = None,
+    quantity: int | None = None,
 ) -> dict:
-    """
-    Call vision AI to extract product info from a single image URL,
-    emit a confirm_product card, and return the card payload.
-    """
+    """Call vision AI to extract product info, emit a confirm_product card."""
     result = await _extract_single_image(image_url, filename, tenant_id_str, db)
 
-    card_payload = {
-        "surface": "confirm_product",
-        "props": {
-            "image_url": image_url,
-            "name": result.get("name", ""),
-            "description": result.get("description", ""),
-            "variants": result.get("variants", []),
-        },
+    props: dict = {
+        "image_url": image_url,
+        "name": result.get("name", ""),
+        "description": result.get("description", ""),
+        "variants": result.get("variants", []),
     }
+    if price is not None:
+        props["price"] = price
+    if quantity is not None:
+        props["quantity"] = quantity
 
+    card_payload = {"surface": "confirm_product", "props": props}
     await websocket.send_text(json.dumps({"type": "a2ui", "payload": card_payload}))
     return card_payload
 
@@ -119,6 +120,8 @@ async def _handle_multi_image_upload(
     tenant_id_str: str,
     db: AsyncSession,
     websocket: WebSocket,
+    price: float | None = None,
+    quantity: int | None = None,
 ) -> list[dict]:
     """
     Call vision AI on multiple image URLs in parallel, group similar products,
@@ -146,17 +149,19 @@ async def _handle_multi_image_upload(
     card_payloads: list[dict] = []
     for product in products:
         first_url = product["image_urls"][0] if product["image_urls"] else (image_urls[0] if image_urls else "")
-        card_payload = {
-            "surface": "confirm_product",
-            "props": {
-                "image_url": first_url,
-                "image_urls": product["image_urls"],
-                "name": product.get("name", ""),
-                "description": product.get("description", ""),
-                "variants": product.get("variants", []),
-                "weight_grams_estimate": product.get("weight_grams_estimate"),
-            },
+        props: dict = {
+            "image_url": first_url,
+            "image_urls": product["image_urls"],
+            "name": product.get("name", ""),
+            "description": product.get("description", ""),
+            "variants": product.get("variants", []),
+            "weight_grams_estimate": product.get("weight_grams_estimate"),
         }
+        if price is not None:
+            props["price"] = price
+        if quantity is not None:
+            props["quantity"] = quantity
+        card_payload = {"surface": "confirm_product", "props": props}
         await websocket.send_text(json.dumps({"type": "a2ui", "payload": card_payload}))
         card_payloads.append(card_payload)
 
@@ -272,8 +277,32 @@ async def agent_chat(websocket: WebSocket, role: str):
                 filenames = [f.get("filename", "image") for f in image_files]
                 first_filename = filenames[0]
 
-                # Persist user message
-                display_text = user_content or f"\U0001f4ce {first_filename}"
+                # Extract price and quantity from the user's text if provided
+                # e.g. "list this for 45 I have 1" → price=45, quantity=1
+                extracted_price: float | None = None
+                extracted_qty: int | None = None
+                if user_content:
+                    import re as _re2
+                    price_match = _re2.search(
+                        r'(?:for|at|price|costs?|selling?|list(?:ing)?\s+(?:it\s+)?(?:for|at))\s*\$?\s*(\d+(?:\.\d+)?)',
+                        user_content, _re2.IGNORECASE
+                    )
+                    if not price_match:
+                        price_match = _re2.search(r'\$\s*(\d+(?:\.\d+)?)', user_content)
+                    qty_match = _re2.search(
+                        r'(?:have|qty|quantity|stock|count|got)\s+(\d+)',
+                        user_content, _re2.IGNORECASE
+                    )
+                    if not qty_match:
+                        qty_match = _re2.search(r'(?:i have|have)\s+(\d+)', user_content, _re2.IGNORECASE)
+                    if price_match:
+                        extracted_price = float(price_match.group(1))
+                    if qty_match:
+                        extracted_qty = int(qty_match.group(1))
+
+                # Persist user message — include image URLs so frontend renders them
+                image_url_list = " ".join(image_urls)
+                display_text = f"{user_content}\n{image_url_list}".strip() if user_content else image_url_list
                 db.add(AgentMessage(
                     session_id=session_id, tenant_id=tenant_id,
                     role="user", content=display_text,
@@ -281,23 +310,27 @@ async def agent_chat(websocket: WebSocket, role: str):
                 await db.commit()
 
                 n = len(image_urls)
-                ack = (
-                    f"Here's what I see across {n} images — fill in the price and quantity to save."
-                    if n > 1
-                    else "Here's what I see — fill in the price and quantity to save it."
-                )
-                await websocket.send_text(json.dumps({"type": "token", "content": ack}))
 
                 if n == 1:
                     card_payload = await _handle_image_upload(
-                        image_urls[0], filenames[0], tenant_id_str, db, websocket
+                        image_urls[0], filenames[0], tenant_id_str, db, websocket,
+                        price=extracted_price, quantity=extracted_qty,
                     )
+                    # Use AI-extracted name in the ack message
+                    product_name = card_payload.get("props", {}).get("name") or "your product"
+                    ack = f"Looks like a **{product_name}** — fill in any missing details and hit Save."
                     new_cards = [{"type": "a2ui", "payload": card_payload}]
                 else:
                     card_payloads = await _handle_multi_image_upload(
-                        image_urls, filenames, tenant_id_str, db, websocket
+                        image_urls, filenames, tenant_id_str, db, websocket,
+                        price=extracted_price, quantity=extracted_qty,
                     )
+                    names = [cp.get("props", {}).get("name") for cp in card_payloads if cp.get("props", {}).get("name")]
+                    name_list = ", ".join(f"**{n}**" for n in names) if names else f"{len(card_payloads)} items"
+                    ack = f"Found {name_list} — fill in any missing details and hit Save."
                     new_cards = [{"type": "a2ui", "payload": cp} for cp in card_payloads]
+
+                await websocket.send_text(json.dumps({"type": "token", "content": ack}))
 
                 card_events.extend(new_cards)
 

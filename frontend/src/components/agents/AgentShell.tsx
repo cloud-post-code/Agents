@@ -340,11 +340,16 @@ export function AgentShell({ agent }: AgentShellProps) {
     const hasFiles = attachedFiles.length > 0;
     if ((!text && !hasFiles) || streaming || !wsRef.current || wsRef.current.readyState !== 1) return;
 
-    // Display: clean badges, no raw URLs or base64
-    const fileNames = attachedFiles.map((f) => `📎 ${f.filename}`).join(" ");
-    const displayContent = hasFiles
-      ? `${text ? text + " " : ""}${fileNames}`
-      : text;
+    // Display: show image files as actual images, CSV as chip
+    const imageUrls = attachedFiles.filter((f) => f.type === "image").map((f) => f.url);
+    const csvChips = attachedFiles.filter((f) => f.type === "csv").map((f) => `📎 ${f.filename}`).join(" ");
+    // Combine: text + image URLs (renderMessageContent will convert to <img>) + csv chips
+    const displayParts = [
+      text,
+      ...imageUrls,
+      csvChips,
+    ].filter(Boolean);
+    const displayContent = displayParts.join("\n").trim();
 
     const filesToSend = [...attachedFiles];
     setInput("");
@@ -377,20 +382,26 @@ export function AgentShell({ agent }: AgentShellProps) {
 
   // Render message content — strip base64 blobs, replace image URLs with <img>
   const renderMessageContent = (content: string) => {
-    // Remove any base64 data URIs (leftover from before the upload fix)
     const cleaned = content.replace(/data:[^;]+;base64,[A-Za-z0-9+/=\n]{50,}/g, "").trim();
+    if (!cleaned) return null;
 
-    const urlRegex = /(https?:\/\/\S+\.(jpg|jpeg|png|webp|gif|avif)(\?\S*)?)/gi;
+    // Split on any https URL that looks like an image (by extension or by upload path)
+    const urlRegex = /(https?:\/\/[^\s]+(?:\.(?:jpg|jpeg|png|webp|gif|avif|svg)(?:\?[^\s]*)?|\/uploads\/[^\s]+|\/agent\/upload[^\s]*))/gi;
     const parts = cleaned.split(urlRegex);
-    if (parts.length === 1) return cleaned || null;
+
+    if (parts.length === 1) return cleaned;
+
     return parts.map((part, i) => {
-      if (/^https?:\/\/.+\.(jpg|jpeg|png|webp|gif|avif)/i.test(part)) {
+      if (/^https?:\/\//i.test(part) && (
+        /\.(jpg|jpeg|png|webp|gif|avif|svg)/i.test(part) ||
+        part.includes("/uploads/") ||
+        part.includes("railway")
+      )) {
         return (
           // eslint-disable-next-line @next/next/no-img-element
-          <img key={i} src={part} alt="Uploaded image" className="max-w-full rounded-xl mt-2 max-h-64 object-cover" />
+          <img key={i} src={part} alt="Uploaded image" className="max-w-full rounded-xl mt-2 object-contain max-h-64 bg-gray-50" />
         );
       }
-      if (/^\.(jpg|jpeg|png|webp|gif|avif)$/i.test(part) || part.startsWith("?")) return null;
       return part || null;
     });
   };
