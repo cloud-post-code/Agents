@@ -12,7 +12,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from langchain_core.language_models import BaseChatModel
 
 from app.agents.prompts import AGENT_SYSTEM_PROMPTS, VALID_ROLES
-from app.agents.tools import SHARED_TOOLS, PRODUCT_MANAGER_TOOLS
+from app.agents.tools import SHARED_TOOLS, PRODUCT_MANAGER_TOOLS, MARKETER_TOOLS
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 def get_tools_for_role(role: str) -> list:
     if role == "product_manager":
         return PRODUCT_MANAGER_TOOLS
+    if role == "marketer":
+        return MARKETER_TOOLS
     return SHARED_TOOLS
 
 
@@ -310,6 +312,160 @@ class ArtisanAgent:
             except Exception as exc:
                 logger.error(f"[ingest_product_from_image] failed: {exc}")
                 return {"status": "error", "error": str(exc)}
+
+        # Marketer tools
+        if tool_name == "get_brand_dna" and db is not None and tenant_id:
+            try:
+                from sqlalchemy import select
+                from app.models.brand import BrandDNA
+                result = await db.execute(
+                    select(BrandDNA).where(BrandDNA.tenant_id == uuid.UUID(tenant_id))
+                )
+                brand = result.scalar_one_or_none()
+
+                # Check if the brand has meaningful data
+                has_brand = bool(
+                    brand and (
+                        brand.brand_name or brand.tone_adjectives or
+                        brand.writing_style or brand.overview
+                    )
+                )
+
+                if not has_brand:
+                    return {
+                        "has_brand": False,
+                        "status": "no_brand",
+                        "instruction": (
+                            "STOP. Do not proceed with copy generation. "
+                            "Tell the user their brand profile is not set up yet and call "
+                            "render_ui(surface='brand_setup', props={}) so they can set it up now. "
+                            "Say: 'Before I write anything, I need your brand info — fill this in and I'll tailor everything to your style.'"
+                        ),
+                    }
+
+                # Build a rich brand context string the agent uses verbatim when writing copy
+                tone = ", ".join(brand.tone_adjectives) if brand.tone_adjectives else "warm and authentic"
+                lines = [
+                    f"Brand name: {brand.brand_name or 'Not set'}",
+                    f"Tagline: {brand.tagline}" if brand.tagline else None,
+                    f"Overview: {brand.overview}" if brand.overview else None,
+                    f"Product category: {brand.product_category}" if brand.product_category else None,
+                    f"Target audience: {brand.target_audience}" if brand.target_audience else None,
+                    f"Tone: {tone}",
+                    f"Writing style: {brand.writing_style}" if brand.writing_style else None,
+                    f"Primary color: {brand.primary_color}" if brand.primary_color else None,
+                    f"Font: {brand.font_family}" if brand.font_family else None,
+                ]
+                brand_context = "\n".join(l for l in lines if l)
+
+                return {
+                    "has_brand": True,
+                    "brand_name": brand.brand_name,
+                    "tagline": brand.tagline,
+                    "overview": brand.overview,
+                    "product_category": brand.product_category,
+                    "target_audience": brand.target_audience,
+                    "tone_adjectives": brand.tone_adjectives or [],
+                    "writing_style": brand.writing_style,
+                    "primary_color": brand.primary_color,
+                    "secondary_color": brand.secondary_color,
+                    "font_family": brand.font_family,
+                    "source": brand.source,
+                    "brand_context_for_copy": brand_context,
+                    "instruction": (
+                        "Brand profile loaded. Use brand_context_for_copy as the voice and style reference "
+                        "for ALL copy you write in this response. Match the tone adjectives exactly. "
+                        "Write copy as if you ARE this brand."
+                    ),
+                }
+            except Exception as exc:
+                logger.error(f"[get_brand_dna] failed: {exc}")
+                return {"error": str(exc)}
+
+        if tool_name in ("generate_social_post", "generate_social_post_batch", "generate_flier") and db is not None and tenant_id:
+            try:
+                import httpx
+                from app.core.config import settings as _settings
+                api_base = f"http://localhost:{getattr(_settings, 'port', 8000)}"
+                # Resolve internally via the service layer directly to avoid HTTP round-trip
+                from app.api.v1.marketing import (
+                    generate_social_post as _gen_post,
+                    generate_social_post_batch as _gen_batch,
+                    generate_flier as _gen_flier,
+                    SocialPostRequest, SocialPostBatchRequest, FlierRequest,
+                    _get_brand, _get_product,
+                )
+                from app.models.brand import BrandDNA
+                from sqlalchemy import select
+
+                brand_result = await db.execute(
+                    select(BrandDNA).where(BrandDNA.tenant_id == uuid.UUID(tenant_id))
+                )
+                brand = brand_result.scalar_one_or_none()
+
+                if tool_name == "generate_social_post":
+                    product = await _get_product(args.get("product_id", ""), uuid.UUID(tenant_id), db)
+                    from app.api.v1.marketing import _generate_caption
+                    caption = await _generate_caption(
+                        title=product.name,
+                        desc=product.description or "",
+                        platform=args.get("platform", "instagram"),
+                        post_type=args.get("post_type", "feed_post"),
+                        creative_brief=args.get("creative_brief", ""),
+                        brand=brand,
+                    )
+                    return {
+                        "product_id": args.get("product_id"),
+                        "product_name": product.name,
+                        "product_image_url": product.image_url,
+                        "platform": args.get("platform", "instagram"),
+                        "post_type": args.get("post_type", "feed_post"),
+                        "caption": caption,
+                        "brand_name": brand.brand_name if brand else None,
+                    }
+
+                elif tool_name == "generate_social_post_batch":
+                    import asyncio
+                    product = await _get_product(args.get("product_id", ""), uuid.UUID(tenant_id), db)
+                    from app.api.v1.marketing import _generate_caption, PLATFORM_LABELS
+                    platforms = args.get("platforms", ["instagram", "facebook", "tiktok"])
+
+                    async def _gen(p):
+                        cap = await _generate_caption(
+                            title=product.name,
+                            desc=product.description or "",
+                            platform=p,
+                            post_type=args.get("post_type", "feed_post"),
+                            creative_brief=args.get("creative_brief", ""),
+                            brand=brand,
+                        )
+                        return {"platform": p, "platform_label": PLATFORM_LABELS.get(p, p), "caption": cap}
+
+                    posts = await asyncio.gather(*[_gen(p) for p in platforms])
+                    return {
+                        "product_id": args.get("product_id"),
+                        "product_name": product.name,
+                        "product_image_url": product.image_url,
+                        "posts": list(posts),
+                    }
+
+                elif tool_name == "generate_flier":
+                    product = await _get_product(args.get("product_id", ""), uuid.UUID(tenant_id), db)
+                    from app.api.v1.marketing import _build_flier_spec
+                    spec = _build_flier_spec(
+                        product=product,
+                        brand=brand,
+                        headline=args.get("headline", ""),
+                        subheadline=args.get("subheadline", ""),
+                        call_to_action=args.get("call_to_action", "Shop Now"),
+                        promo_text=args.get("promo_text", ""),
+                        fmt=args.get("format", "square"),
+                    )
+                    return spec
+
+            except Exception as exc:
+                logger.error(f"[{tool_name}] failed: {exc}")
+                return {"error": str(exc)}
 
         if tool_name == "render_ui":
             return {

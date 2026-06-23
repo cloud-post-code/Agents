@@ -146,6 +146,15 @@
       "feature_dir": "docs/features/16-admin-agent-full",
       "proof": "docs/features/16-admin-agent-full/PROOF.md",
       "path": "docs/features/16-admin-agent-full"
+    },
+    {
+      "id": "17-marketing-agent-brand-dna",
+      "title": "Marketing Agent \u2014 Brand DNA, Social Posts & Fliers",
+      "status": "passing",
+      "priority": 17,
+      "skill": "coding-python-backend + coding-frontend",
+      "proof_command": "pytest backend/tests/test_marketing_agent.py -v",
+      "path": "docs/features/17-marketing-agent-brand-dna"
     }
   ]
 }

@@ -20,11 +20,14 @@ const AGENT_COLORS: Record<string, { active: string; dot: string }> = {
 };
 
 const WORKSPACE_ITEMS = [
-  { href: "/dashboard", label: "Dashboard", icon: "⊞" },
-  { href: "/tasks",     label: "Tasks",     icon: "✓" },
-  { href: "/calendar",  label: "Calendar",  icon: "◻" },
-  { href: "/reports",   label: "Reports",   icon: "▤" },
+  { href: "/dashboard",     label: "Dashboard",     icon: "⊞" },
+  { href: "/tasks",         label: "Tasks",         icon: "✓" },
+  { href: "/inventory",     label: "Inventory",     icon: "📦" },
+  { href: "/calendar",      label: "Calendar",      icon: "◻" },
+  { href: "/reports",       label: "Reports",       icon: "▤" },
   { href: "/notifications", label: "Notifications", icon: "🔔" },
+  { href: "/brand",         label: "Brand DNA",     icon: "🎨" },
+  { href: "/marketing",     label: "Marketing",     icon: "📣" },
 ];
 
 export function Sidebar() {
@@ -94,13 +97,13 @@ export function Sidebar() {
                   active ? colors.active : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
                 }`}
               >
-                <span className={`w-2 h-2 rounded-full shrink-0 ${active ? colors.dot : "bg-gray-300"}`} />
+                <span className="text-base leading-none w-5 text-center shrink-0">{agent.icon}</span>
                 <div className="min-w-0">
                   <p className={`text-sm font-medium leading-tight ${active ? "" : "text-gray-700"}`}>
                     {agent.name}
                   </p>
                   <p className="text-[10px] text-gray-400 truncate leading-tight">
-                    {agent.description}
+                    {agent.tagline}
                   </p>
                 </div>
               </Link>

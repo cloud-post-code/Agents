@@ -38,7 +38,7 @@ async def db() -> AsyncGenerator[AsyncSession, None]:
             text(
                 "TRUNCATE TABLE notifications, task_approvals, calendar_events, "
                 "agent_messages, reports, tasks, integrations, agent_sessions, "
-                "stock_adjustments, product_variants, products, users, tenants RESTART IDENTITY CASCADE"
+                "stock_adjustments, product_variants, products, brand_dna, users, tenants RESTART IDENTITY CASCADE"
             )
         )
     session_factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)

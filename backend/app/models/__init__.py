@@ -1,4 +1,5 @@
 from app.models.agent import AgentMessage, AgentSession  # noqa: F401
+from app.models.brand import BrandDNA  # noqa: F401
 from app.models.calendar import CalendarEvent  # noqa: F401
 from app.models.integration import Integration  # noqa: F401
 from app.models.notification import Notification  # noqa: F401

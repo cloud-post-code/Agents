@@ -15,6 +15,10 @@ import { MultiProductCard } from "@/components/a2ui/surfaces/MultiProductCard";
 import { VariantConfirmCard } from "@/components/a2ui/surfaces/VariantConfirmCard";
 import { ProductListCard } from "@/components/a2ui/surfaces/ProductListCard";
 import { DiscountCard } from "@/components/a2ui/surfaces/DiscountCard";
+import { BulkListingCard } from "@/components/a2ui/surfaces/BulkListingCard";
+import { BrandSetupCard } from "@/components/a2ui/surfaces/BrandSetupCard";
+import { SocialPostPreviewCard } from "@/components/a2ui/surfaces/SocialPostPreviewCard";
+import { FlierPreviewCard } from "@/components/a2ui/surfaces/FlierPreviewCard";
 
 type MessageKind = "user" | "assistant" | "task_created" | "a2ui" | "card";
 
@@ -87,6 +91,10 @@ function A2UICard({ payload }: { payload: Record<string, unknown> }) {
   if (surface === "variant_product") return <VariantConfirmCard {...(props as unknown as Parameters<typeof VariantConfirmCard>[0])} />;
   if (surface === "product_list") return <ProductListCard {...(props as unknown as Parameters<typeof ProductListCard>[0])} />;
   if (surface === "discount") return <DiscountCard {...(props as unknown as Parameters<typeof DiscountCard>[0])} />;
+  if (surface === "bulk_listing") return <BulkListingCard {...(props as unknown as Parameters<typeof BulkListingCard>[0])} />;
+  if (surface === "brand_setup") return <BrandSetupCard />;
+  if (surface === "social_post_preview") return <SocialPostPreviewCard {...(props as unknown as Parameters<typeof SocialPostPreviewCard>[0])} />;
+  if (surface === "flier_preview") return <FlierPreviewCard {...(props as unknown as Parameters<typeof FlierPreviewCard>[0])} />;
 
   // Generic fallback — render images as <img>, everything else as readable text
   const entries = Object.entries(props).filter(([, v]) => v !== undefined && v !== null);
@@ -125,6 +133,61 @@ function A2UICard({ payload }: { payload: Record<string, unknown> }) {
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+function AgentWelcome({
+  agent, agentColor, onExample,
+}: {
+  agent: AgentConfig;
+  agentColor: string;
+  onExample: (text: string) => void;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center h-full px-4 py-8 text-center">
+      {/* Avatar */}
+      <div className={`w-16 h-16 rounded-2xl ${agentColor} flex items-center justify-center text-3xl mb-4 shadow-md`}>
+        {agent.icon}
+      </div>
+
+      {/* Name + tagline */}
+      <h2 className="text-lg font-bold text-gray-900">{agent.name}</h2>
+      <p className="text-sm text-gray-500 mb-1">{agent.tagline}</p>
+
+      {/* Detail */}
+      <p className="text-sm text-gray-600 max-w-sm leading-relaxed mb-6">
+        {agent.detail}
+      </p>
+
+      {/* Capabilities */}
+      <div className="w-full max-w-sm mb-6 text-left">
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2 text-center">What I can do</p>
+        <ul className="space-y-1.5">
+          {agent.capabilities.map((cap) => (
+            <li key={cap} className="flex items-start gap-2 text-sm text-gray-600">
+              <span className="text-green-500 mt-0.5 shrink-0">✓</span>
+              <span>{cap}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* Example prompts */}
+      <div className="w-full max-w-sm text-left">
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2 text-center">Try asking</p>
+        <div className="grid grid-cols-1 gap-2">
+          {agent.examples.map((ex) => (
+            <button
+              key={ex}
+              onClick={() => onExample(ex)}
+              className="text-left text-sm text-gray-700 bg-white border border-gray-200 rounded-xl px-4 py-2.5 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+            >
+              &ldquo;{ex}&rdquo;
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -470,15 +533,15 @@ export function AgentShell({ agent }: AgentShellProps) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="border-b p-4 flex items-center gap-3 bg-white">
-        <div className={`w-9 h-9 rounded-full ${agentColor} flex items-center justify-center text-white font-bold`}>
-          {agent.name[0]}
+      <div className="border-b px-4 py-3 flex items-center gap-3 bg-white">
+        <div className={`w-9 h-9 rounded-full ${agentColor} flex items-center justify-center text-lg shrink-0`}>
+          {agent.icon}
         </div>
-        <div>
-          <h1 className="font-semibold">{agent.name}</h1>
-          <p className="text-xs text-gray-500">{agent.description}</p>
+        <div className="min-w-0">
+          <h1 className="font-semibold text-gray-900 leading-tight">{agent.name}</h1>
+          <p className="text-xs text-gray-500 truncate">{agent.tagline}</p>
         </div>
-        <span className={`ml-auto text-xs px-2 py-0.5 rounded-full ${connected ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-400"}`}>
+        <span className={`ml-auto text-xs px-2 py-0.5 rounded-full shrink-0 ${connected ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-400"}`}>
           {connected ? "● Online" : "○ Connecting"}
         </span>
       </div>
@@ -491,13 +554,7 @@ export function AgentShell({ agent }: AgentShellProps) {
         )}
 
         {historyLoaded && messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full text-center gap-2">
-            <div className={`w-16 h-16 rounded-full ${agentColor} flex items-center justify-center text-white text-2xl font-bold`}>
-              {agent.name[0]}
-            </div>
-            <p className="text-gray-500 text-sm mt-2">Hi! I&apos;m your {agent.name}.</p>
-            <p className="text-gray-400 text-sm">{agent.description}</p>
-          </div>
+          <AgentWelcome agent={agent} agentColor={agentColor} onExample={setInput} />
         )}
 
         {historyLoaded && renderMessages()}

@@ -5,7 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.v1 import admin_profile, agent_history, auth, calendar, discounts, health, image_enhance, inventory, notifications, reports, tasks, upload, ws_agent
+from app.api.v1 import admin_profile, agent_history, auth, brand, calendar, discounts, health, image_enhance, inventory, marketing, notifications, reports, tasks, upload, ws_agent
 from app.core.config import settings
 from app.db.engine import engine
 
@@ -58,4 +58,6 @@ app.include_router(agent_history.router, prefix="/api/v1")  # Agent message hist
 app.include_router(notifications.router)  # Uses full paths defined in router
 app.include_router(admin_profile.router)
 app.include_router(image_enhance.router)
+app.include_router(brand.router, prefix="/api/v1")
+app.include_router(marketing.router, prefix="/api/v1")
 app.include_router(ws_agent.router)  # WebSocket routes don't use /api/v1 prefix

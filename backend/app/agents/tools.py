@@ -135,6 +135,82 @@ def ingest_products_from_csv(csv_base64: str) -> dict:
     }
 
 
+@tool
+def get_brand_dna() -> dict:
+    """Retrieve the current brand DNA profile (name, colors, fonts, tone, voice)."""
+    return {"status": "stub", "message": "handled by _execute_tool"}
+
+
+@tool
+def generate_social_post(
+    product_id: str,
+    platform: str = "instagram",
+    post_type: str = "feed_post",
+    creative_brief: str = "",
+) -> dict:
+    """
+    Generate an expert social media caption for a product.
+
+    Args:
+        product_id: UUID of the product from the catalog
+        platform: Target platform — instagram, facebook, tiktok, twitter, pinterest
+        post_type: Content format — feed_post, story, reel, carousel
+        creative_brief: Optional creative direction or special offer to highlight
+
+    Returns:
+        Dict with caption, product details, and platform info
+    """
+    return {"status": "stub", "message": "handled by _execute_tool"}
+
+
+@tool
+def generate_social_post_batch(
+    product_id: str,
+    platforms: list = ["instagram", "facebook", "tiktok"],  # noqa: B006
+    post_type: str = "feed_post",
+    creative_brief: str = "",
+) -> dict:
+    """
+    Generate captions for multiple social platforms at once for a single product.
+
+    Args:
+        product_id: UUID of the product
+        platforms: List of platforms to generate for
+        post_type: Content format for all platforms
+        creative_brief: Optional creative direction
+
+    Returns:
+        Dict with a 'posts' array, each containing platform and caption
+    """
+    return {"status": "stub", "message": "handled by _execute_tool"}
+
+
+@tool
+def generate_flier(
+    product_id: str,
+    headline: str = "",
+    subheadline: str = "",
+    call_to_action: str = "Shop Now",
+    promo_text: str = "",
+    format: str = "square",
+) -> dict:
+    """
+    Generate a branded flier spec for a product using the brand DNA.
+
+    Args:
+        product_id: UUID of the product
+        headline: Main headline text (defaults to product name)
+        subheadline: Supporting copy (defaults to truncated description)
+        call_to_action: Button/CTA text (e.g. 'Shop Now', 'Learn More', '20% Off Today')
+        promo_text: Optional promotional banner text (e.g. 'LIMITED TIME OFFER')
+        format: Flier dimensions — square (1080×1080), portrait (1080×1350), landscape (1200×628)
+
+    Returns:
+        Structured flier spec with brand, product, copy, and style data
+    """
+    return {"status": "stub", "message": "handled by _execute_tool"}
+
+
 SHARED_TOOLS = [render_ui, generate_report]
 PRODUCT_MANAGER_TOOLS = SHARED_TOOLS + [
     search_catalog,
@@ -142,4 +218,11 @@ PRODUCT_MANAGER_TOOLS = SHARED_TOOLS + [
     get_catalog_summary,
     ingest_product_from_image,
     ingest_products_from_csv,
+]
+MARKETER_TOOLS = SHARED_TOOLS + [
+    search_catalog,
+    get_brand_dna,
+    generate_social_post,
+    generate_social_post_batch,
+    generate_flier,
 ]
