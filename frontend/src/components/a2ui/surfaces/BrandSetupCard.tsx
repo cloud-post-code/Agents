@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 
-type SetupTab = "identity" | "voice" | "visual" | "logo";
+type SetupTab = "identity_voice" | "visual" | "logo" | "setup";
 
 interface BrandDNA {
   brand_name?: string;
@@ -42,7 +42,6 @@ const TONE_OPTIONS = [
   "Vibrant", "Authentic", "Earthy", "Refined",
 ];
 
-// Three big open-ended voice questions
 const QA_QUESTIONS = [
   {
     key: "brand_sound_feel",
@@ -64,6 +63,8 @@ const QA_QUESTIONS = [
   },
 ];
 
+// ─── Voice button ─────────────────────────────────────────────────────────────
+
 function useSpeechRecognition(onResult: (text: string) => void) {
   const recognitionRef = useRef<{ start(): void; stop(): void; onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null; onend: (() => void) | null } | null>(null);
   const [listening, setListening] = useState(false);
@@ -73,14 +74,11 @@ function useSpeechRecognition(onResult: (text: string) => void) {
       (window as unknown as { SpeechRecognition?: new () => typeof recognitionRef.current; webkitSpeechRecognition?: new () => typeof recognitionRef.current }).SpeechRecognition ||
       (window as unknown as { webkitSpeechRecognition?: new () => typeof recognitionRef.current }).webkitSpeechRecognition;
     if (!SpeechRecognition) return;
-
     recognitionRef.current = new SpeechRecognition();
     const rec = recognitionRef.current;
     if (!rec) return;
     rec.onresult = (e) => {
-      const transcript = Array.from(e.results)
-        .map((r) => r[0].transcript)
-        .join(" ");
+      const transcript = Array.from(e.results).map((r) => r[0].transcript).join(" ");
       onResult(transcript);
     };
     rec.onend = () => setListening(false);
@@ -96,49 +94,114 @@ function useSpeechRecognition(onResult: (text: string) => void) {
   return { listening, startListening, stopListening };
 }
 
-// ─── Source Picker ──────────────────────────────────────────────────────────
+function VoiceButton({ onTranscript }: { onTranscript: (t: string) => void }) {
+  const { listening, startListening, stopListening } = useSpeechRecognition(onTranscript);
+  const supported = typeof window !== "undefined" && ("SpeechRecognition" in window || "webkitSpeechRecognition" in window);
+  if (!supported) return null;
+  return (
+    <button
+      type="button"
+      onClick={listening ? stopListening : startListening}
+      title={listening ? "Stop recording" : "Speak your answer"}
+      className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border font-medium transition-colors ${
+        listening
+          ? "bg-red-500 border-red-500 text-white animate-pulse"
+          : "bg-white border-gray-200 text-gray-500 hover:border-rose-300 hover:text-rose-500"
+      }`}
+    >
+      {listening ? "🔴 Recording…" : "🎙 Speak"}
+    </button>
+  );
+}
 
-function SourcePicker({
-  onQA, onFile, onUrl, extracting,
+// ─── Setup tab: source picker + Q&A ──────────────────────────────────────────
+
+function SetupTab({
+  onSubmitQA,
+  onFile,
+  onUrl,
+  extracting,
 }: {
-  onQA: () => void;
+  onSubmitQA: (answers: Record<string, string>) => void;
   onFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onUrl: (url: string) => void;
   extracting: boolean;
 }) {
+  const [mode, setMode] = useState<"picker" | "qa">("picker");
+  const [answers, setAnswers] = useState<Record<string, string>>({});
   const [url, setUrl] = useState("");
+
+  function setAnswer(key: string, value: string) {
+    setAnswers((prev) => ({ ...prev, [key]: value }));
+  }
+
+  const filled = QA_QUESTIONS.filter((q) => (answers[q.key] || "").trim().length > 0).length;
+
+  if (mode === "qa") {
+    return (
+      <div className="space-y-5">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold text-gray-900">Tell us about your brand</p>
+            <p className="text-xs text-gray-500 mt-0.5">Answer what you can — nothing is required. Type or speak.</p>
+          </div>
+          <button onClick={() => setMode("picker")} className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1">← Back</button>
+        </div>
+
+        {QA_QUESTIONS.map((q) => (
+          <div key={q.key} className="space-y-1.5">
+            <div className="flex items-start justify-between gap-2">
+              <label className="text-sm font-medium text-gray-800 leading-snug">{q.label}</label>
+              <VoiceButton onTranscript={(t) => setAnswer(q.key, (answers[q.key] ? answers[q.key] + " " : "") + t)} />
+            </div>
+            <textarea
+              value={answers[q.key] || ""}
+              onChange={(e) => setAnswer(q.key, e.target.value)}
+              placeholder={q.placeholder}
+              rows={q.rows}
+              className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-rose-300 resize-none leading-relaxed"
+            />
+          </div>
+        ))}
+
+        <button
+          onClick={() => onSubmitQA(answers)}
+          disabled={extracting || filled === 0}
+          className="w-full py-3 rounded-xl bg-rose-500 text-white text-sm font-semibold hover:bg-rose-600 disabled:opacity-40 transition-colors"
+        >
+          {extracting ? "Building your brand profile…" : `Build my brand profile${filled > 0 ? ` (${filled}/${QA_QUESTIONS.length} answered)` : ""}`}
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div className="p-6 space-y-4">
+    <div className="space-y-4">
       <div className="text-center mb-2">
         <p className="text-sm font-semibold text-gray-800">How would you like to set up your brand?</p>
         <p className="text-xs text-gray-500 mt-0.5">You can always edit or re-import later</p>
       </div>
 
-      {/* Option tiles */}
       <div className="grid grid-cols-1 gap-3">
         {/* Q&A */}
         <button
-          onClick={onQA}
+          onClick={() => setMode("qa")}
           className="flex items-center gap-4 p-4 rounded-2xl border-2 border-rose-100 bg-rose-50/50 hover:border-rose-300 hover:bg-rose-50 transition-all text-left group"
         >
-          <div className="w-11 h-11 rounded-xl bg-rose-500 flex items-center justify-center text-xl shrink-0 shadow-sm">
-            💬
-          </div>
+          <div className="w-11 h-11 rounded-xl bg-rose-500 flex items-center justify-center text-xl shrink-0 shadow-sm">💬</div>
           <div>
             <div className="text-sm font-semibold text-gray-900">Answer 3 questions</div>
-            <div className="text-xs text-gray-500 mt-0.5">Tell us how your brand sounds and who it's for — type or speak your answers</div>
+            <div className="text-xs text-gray-500 mt-0.5">Tell us how your brand sounds and who it&apos;s for — type or speak your answers</div>
           </div>
           <span className="ml-auto text-rose-300 group-hover:text-rose-500 text-lg">→</span>
         </button>
 
         {/* File upload */}
         <label className="flex items-center gap-4 p-4 rounded-2xl border-2 border-gray-100 bg-gray-50/50 hover:border-rose-200 hover:bg-rose-50/30 transition-all text-left cursor-pointer group">
-          <div className="w-11 h-11 rounded-xl bg-gray-800 flex items-center justify-center text-xl shrink-0 shadow-sm">
-            📎
-          </div>
+          <div className="w-11 h-11 rounded-xl bg-gray-800 flex items-center justify-center text-xl shrink-0 shadow-sm">📎</div>
           <div>
             <div className="text-sm font-semibold text-gray-900">Upload a file</div>
-            <div className="text-xs text-gray-500 mt-0.5">Brand guide, PDF, DOCX, image — we'll extract your brand info automatically</div>
+            <div className="text-xs text-gray-500 mt-0.5">Brand guide, PDF, DOCX, image — we&apos;ll extract your brand info automatically</div>
           </div>
           {extracting ? (
             <span className="ml-auto text-xs text-rose-500 animate-pulse">Extracting…</span>
@@ -150,9 +213,7 @@ function SourcePicker({
 
         {/* Website URL */}
         <div className="flex items-center gap-4 p-4 rounded-2xl border-2 border-gray-100 bg-gray-50/50">
-          <div className="w-11 h-11 rounded-xl bg-indigo-600 flex items-center justify-center text-xl shrink-0 shadow-sm">
-            🌐
-          </div>
+          <div className="w-11 h-11 rounded-xl bg-indigo-600 flex items-center justify-center text-xl shrink-0 shadow-sm">🌐</div>
           <div className="flex-1 min-w-0">
             <div className="text-sm font-semibold text-gray-900 mb-1">Paste your website URL</div>
             <input
@@ -176,100 +237,22 @@ function SourcePicker({
   );
 }
 
-// ─── Q&A Panel ──────────────────────────────────────────────────────────────
+// ─── Main component ───────────────────────────────────────────────────────────
 
-function VoiceButton({ onTranscript }: { onTranscript: (t: string) => void }) {
-  const { listening, startListening, stopListening } = useSpeechRecognition(onTranscript);
-  const supported = typeof window !== "undefined" && ("SpeechRecognition" in window || "webkitSpeechRecognition" in window);
-  if (!supported) return null;
-
-  return (
-    <button
-      type="button"
-      onClick={listening ? stopListening : startListening}
-      title={listening ? "Stop recording" : "Speak your answer"}
-      className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border font-medium transition-colors ${
-        listening
-          ? "bg-red-500 border-red-500 text-white animate-pulse"
-          : "bg-white border-gray-200 text-gray-500 hover:border-rose-300 hover:text-rose-500"
-      }`}
-    >
-      {listening ? "🔴 Recording…" : "🎙 Speak"}
-    </button>
-  );
-}
-
-function QAPanel({
-  onSubmit, onCancel, extracting,
-}: {
-  onSubmit: (answers: Record<string, string>) => void;
-  onCancel: () => void;
-  extracting: boolean;
-}) {
-  const [answers, setAnswers] = useState<Record<string, string>>({});
-
-  function set(key: string, value: string) {
-    setAnswers((prev) => ({ ...prev, [key]: value }));
-  }
-
-  const filled = QA_QUESTIONS.filter((q) => (answers[q.key] || "").trim().length > 0).length;
-
-  return (
-    <div className="p-5 space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-semibold text-gray-900">Tell us about your brand</p>
-          <p className="text-xs text-gray-500 mt-0.5">Answer what you can — nothing is required</p>
-        </div>
-        <button onClick={onCancel} className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1">← Back</button>
-      </div>
-
-      {QA_QUESTIONS.map((q) => (
-        <div key={q.key} className="space-y-1.5">
-          <div className="flex items-start justify-between gap-2">
-            <label className="text-sm font-medium text-gray-800 leading-snug">{q.label}</label>
-            <VoiceButton onTranscript={(t) => set(q.key, (answers[q.key] ? answers[q.key] + " " : "") + t)} />
-          </div>
-          <textarea
-            value={answers[q.key] || ""}
-            onChange={(e) => set(q.key, e.target.value)}
-            placeholder={q.placeholder}
-            rows={q.rows}
-            className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-rose-300 resize-none leading-relaxed"
-          />
-        </div>
-      ))}
-
-      <button
-        onClick={() => onSubmit(answers)}
-        disabled={extracting || filled === 0}
-        className="w-full py-3 rounded-xl bg-rose-500 text-white text-sm font-semibold hover:bg-rose-600 disabled:opacity-40 transition-colors"
-      >
-        {extracting ? "Building your brand profile…" : `Build my brand profile${filled > 0 ? ` (${filled}/${QA_QUESTIONS.length} answered)` : ""}`}
-      </button>
-    </div>
-  );
-}
-
-// ─── Main component ──────────────────────────────────────────────────────────
-
-export function BrandSetupCard() {
+export function BrandSetupCard({ initialTab }: { initialTab?: SetupTab }) {
   const { token } = useAuth();
-  const [activeTab, setActiveTab] = useState<SetupTab>("identity");
+  const [activeTab, setActiveTab] = useState<SetupTab>(initialTab || "identity_voice");
   const [brand, setBrand] = useState<BrandDNA>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [extracting, setExtracting] = useState(false);
-  const [qaMode, setQaMode] = useState(false);
   const [toneList, setToneList] = useState<string[]>([]);
   const [customTone, setCustomTone] = useState("");
   const [notice, setNotice] = useState("");
   const [generatingLogo, setGeneratingLogo] = useState(false);
 
-  // Local tab drafts — committed by one Save button per tab
-  const [identityDraft, setIdentityDraft] = useState<Partial<BrandDNA>>({});
-  const [voiceDraft, setVoiceDraft] = useState<Partial<BrandDNA>>({});
+  const [identityVoiceDraft, setIdentityVoiceDraft] = useState<Partial<BrandDNA>>({});
   const [visualDraft, setVisualDraft] = useState<Partial<BrandDNA>>({});
 
   useEffect(() => {
@@ -283,16 +266,15 @@ export function BrandSetupCard() {
       .finally(() => setLoading(false));
   }, [token]);
 
-  // Sync drafts when brand loads
   useEffect(() => {
-    setIdentityDraft({
+    setIdentityVoiceDraft({
       brand_name: brand.brand_name,
       tagline: brand.tagline,
       product_category: brand.product_category,
       target_audience: brand.target_audience,
       overview: brand.overview,
+      writing_style: brand.writing_style,
     });
-    setVoiceDraft({ writing_style: brand.writing_style });
     setVisualDraft({
       primary_color: brand.primary_color,
       primary_color_inverse: brand.primary_color_inverse,
@@ -304,7 +286,7 @@ export function BrandSetupCard() {
       imagery_style: brand.imagery_style,
       typography_vibe: brand.typography_vibe,
     });
-  }, [brand.brand_name]); // re-sync when brand first loads
+  }, [brand.brand_name]);
 
   async function saveTab(patch: Partial<BrandDNA>) {
     if (!token) return;
@@ -343,7 +325,7 @@ export function BrandSetupCard() {
         setBrand(data.brand);
         setToneList(data.brand.tone_adjectives || []);
         setNotice("Brand extracted from file!");
-        setActiveTab("identity");
+        setActiveTab("identity_voice");
       }
     } catch {
       setNotice("Could not read that file. Try PDF, DOCX, TXT, or an image.");
@@ -365,7 +347,7 @@ export function BrandSetupCard() {
         setBrand(data.brand);
         setToneList(data.brand.tone_adjectives || []);
         setNotice("Brand extracted from your website!");
-        setActiveTab("identity");
+        setActiveTab("identity_voice");
       }
     } catch {
       setNotice("Could not extract from that URL. Try another or fill in manually.");
@@ -386,8 +368,7 @@ export function BrandSetupCard() {
         setBrand(data.brand);
         setToneList(data.brand.tone_adjectives || []);
         setNotice("Brand profile created from your answers!");
-        setQaMode(false);
-        setActiveTab("identity");
+        setActiveTab("identity_voice");
       }
     } finally {
       setExtracting(false);
@@ -448,6 +429,15 @@ export function BrandSetupCard() {
     setCustomTone("");
   }
 
+  // Completion — ≥20% = "Ready"
+  const filledFields = [
+    brand.brand_name, brand.tagline, brand.primary_color,
+    brand.font_family, toneList.length > 0 ? "yes" : null,
+    brand.overview, brand.writing_style, brand.logo_url,
+  ].filter(Boolean).length;
+  const pct = Math.round((filledFields / 8) * 100);
+  const isReady = pct >= 20;
+
   if (loading) {
     return (
       <div className="rounded-2xl border border-rose-100 bg-white p-6 animate-pulse">
@@ -458,19 +448,12 @@ export function BrandSetupCard() {
     );
   }
 
-  // Completion — ≥20% = "Ready"
-  const filledFields = [
-    brand.brand_name, brand.tagline, brand.primary_color,
-    brand.font_family, toneList.length > 0 ? "yes" : null,
-    brand.overview, brand.writing_style, brand.logo_url,
-  ].filter(Boolean).length;
-  const totalFields = 8;
-  const pct = Math.round((filledFields / totalFields) * 100);
-  const isReady = pct >= 20;
-  const hasAnyBrand = filledFields > 0;
-
-  // Show source picker when brand is completely empty
-  const showSourcePicker = !hasAnyBrand && !qaMode;
+  const TAB_CONFIG: { key: SetupTab; label: string }[] = [
+    { key: "identity_voice", label: "🏷 Identity & Voice" },
+    { key: "visual", label: "🎨 Visual" },
+    { key: "logo", label: "🖼 Logo" },
+    { key: "setup", label: "⚙ Setup" },
+  ];
 
   return (
     <div className="rounded-2xl border border-rose-100 bg-white shadow-sm overflow-hidden w-full">
@@ -495,16 +478,6 @@ export function BrandSetupCard() {
             <div className="w-14 h-1.5 bg-rose-100 rounded-full overflow-hidden">
               <div className="h-full bg-rose-400 rounded-full transition-all" style={{ width: `${pct}%` }} />
             </div>
-            {/* Re-import button when brand exists */}
-            {hasAnyBrand && !qaMode && (
-              <button
-                onClick={() => setQaMode(true)}
-                className="text-xs text-gray-400 hover:text-rose-500 ml-1"
-                title="Re-import or update brand"
-              >
-                ↺
-              </button>
-            )}
           </div>
         </div>
         {notice && (
@@ -514,281 +487,219 @@ export function BrandSetupCard() {
         )}
       </div>
 
-      {/* Source picker — shown when brand is empty */}
-      {showSourcePicker && (
-        <SourcePicker
-          onQA={() => setQaMode(true)}
-          onFile={handleFileUpload}
-          onUrl={extractFromWebsite}
-          extracting={extracting}
-        />
-      )}
+      {/* Tab nav */}
+      <div className="flex border-b border-gray-100">
+        {TAB_CONFIG.map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setActiveTab(key)}
+            className={`flex-1 text-xs font-medium py-2.5 border-b-2 transition-colors ${
+              activeTab === key
+                ? "border-rose-400 text-rose-600 bg-rose-50/40"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
-      {/* Q&A mode */}
-      {qaMode && (
-        <QAPanel
-          onSubmit={submitQA}
-          onCancel={() => setQaMode(false)}
-          extracting={extracting}
-        />
-      )}
+      <div className="p-5">
+        {/* ── Identity & Voice tab ── */}
+        {activeTab === "identity_voice" && (
+          <div className="space-y-4">
+            <TextField label="Brand Name" value={identityVoiceDraft.brand_name} onChange={(v) => setIdentityVoiceDraft((d) => ({ ...d, brand_name: v }))} placeholder="e.g. Global Threads" />
+            <TextField label="Tagline" value={identityVoiceDraft.tagline} onChange={(v) => setIdentityVoiceDraft((d) => ({ ...d, tagline: v }))} placeholder="e.g. Crafted for a Global Audience" />
+            <TextField label="Product Category" value={identityVoiceDraft.product_category} onChange={(v) => setIdentityVoiceDraft((d) => ({ ...d, product_category: v }))} placeholder="e.g. Artisanal Home Decor" />
+            <TextField label="Target Audience" value={identityVoiceDraft.target_audience} onChange={(v) => setIdentityVoiceDraft((d) => ({ ...d, target_audience: v }))} placeholder="e.g. Design-conscious shoppers who value handmade goods" textarea />
+            <TextField label="Brand Overview" value={identityVoiceDraft.overview} onChange={(v) => setIdentityVoiceDraft((d) => ({ ...d, overview: v }))} placeholder="e.g. A lifestyle brand focused on ethical sourcing and global craftsmanship" textarea />
 
-      {/* Tabbed editor — shown when brand has any data and not in Q&A */}
-      {hasAnyBrand && !qaMode && (
-        <>
-          {/* Tab nav */}
-          <div className="flex border-b border-gray-100">
-            {(["identity", "voice", "visual", "logo"] as const).map((tab) => {
-              const labels: Record<SetupTab, string> = {
-                identity: "🏷 Identity",
-                voice: "🗣 Voice",
-                visual: "🎨 Visual",
-                logo: "🖼 Logo",
-              };
-              return (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`flex-1 text-xs font-medium py-2.5 border-b-2 transition-colors ${
-                    activeTab === tab
-                      ? "border-rose-400 text-rose-600 bg-rose-50/40"
-                      : "border-transparent text-gray-500 hover:text-gray-700"
-                  }`}
-                >
-                  {labels[tab]}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="p-5">
-            {/* ── Identity tab ── */}
-            {activeTab === "identity" && (
-              <div className="space-y-4">
-                <TextField
-                  label="Brand Name"
-                  value={identityDraft.brand_name}
-                  onChange={(v) => setIdentityDraft((d) => ({ ...d, brand_name: v }))}
-                  placeholder="e.g. Global Threads"
-                />
-                <TextField
-                  label="Tagline"
-                  value={identityDraft.tagline}
-                  onChange={(v) => setIdentityDraft((d) => ({ ...d, tagline: v }))}
-                  placeholder="e.g. Crafted for a Global Audience"
-                />
-                <TextField
-                  label="Product Category"
-                  value={identityDraft.product_category}
-                  onChange={(v) => setIdentityDraft((d) => ({ ...d, product_category: v }))}
-                  placeholder="e.g. Artisanal Home Decor"
-                />
-                <TextField
-                  label="Target Audience"
-                  value={identityDraft.target_audience}
-                  onChange={(v) => setIdentityDraft((d) => ({ ...d, target_audience: v }))}
-                  placeholder="e.g. Design-conscious shoppers who value handmade goods"
-                  textarea
-                />
-                <TextField
-                  label="Brand Overview"
-                  value={identityDraft.overview}
-                  onChange={(v) => setIdentityDraft((d) => ({ ...d, overview: v }))}
-                  placeholder="e.g. A lifestyle brand focused on ethical sourcing and global craftsmanship"
-                  textarea
-                />
-                <SaveButton saving={saving} saved={saved} onClick={() => saveTab(identityDraft)} />
-              </div>
-            )}
-
-            {/* ── Voice tab ── */}
-            {activeTab === "voice" && (
-              <div className="space-y-4">
-                <div>
-                  <label className="text-xs font-medium text-gray-600 mb-2 block">Tone</label>
-                  <div className="flex flex-wrap gap-1.5 mb-2">
-                    {TONE_OPTIONS.map((t) => (
-                      <button
-                        key={t}
-                        onClick={() => toggleTone(t)}
-                        className={`text-xs px-2.5 py-1 rounded-full border font-medium transition-colors ${
-                          toneList.includes(t)
-                            ? "bg-rose-500 border-rose-500 text-white"
-                            : "bg-white border-gray-200 text-gray-600 hover:border-rose-200"
-                        }`}
-                      >
-                        {t}
-                      </button>
-                    ))}
-                  </div>
-                  {toneList.filter((t) => !TONE_OPTIONS.includes(t)).map((t) => (
-                    <span key={t} className="text-xs px-2.5 py-1 rounded-full bg-rose-500 text-white border border-rose-500 font-medium mr-1.5 mb-1.5 inline-flex items-center gap-1">
-                      {t}
-                      <button onClick={() => setToneList((prev) => prev.filter((x) => x !== t))} className="ml-0.5 opacity-70 hover:opacity-100">✕</button>
-                    </span>
-                  ))}
-                  <div className="flex gap-2 mt-2">
-                    <input
-                      value={customTone}
-                      onChange={(e) => setCustomTone(e.target.value)}
-                      placeholder="Add custom tone word…"
-                      onKeyDown={(e) => e.key === "Enter" && addCustomTone()}
-                      className="text-xs flex-1 border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-rose-300"
-                    />
-                    <button onClick={addCustomTone} className="text-xs px-3 py-1.5 rounded-lg bg-rose-100 text-rose-600 hover:bg-rose-200 font-medium">Add</button>
-                  </div>
-                </div>
-                <TextField
-                  label="Writing Style"
-                  value={voiceDraft.writing_style}
-                  onChange={(v) => setVoiceDraft((d) => ({ ...d, writing_style: v }))}
-                  placeholder="e.g. Descriptive, evocative, polished prose. Tactile and story-driven."
-                  textarea
-                />
-                <SaveButton saving={saving} saved={saved} onClick={() => saveTab({ ...voiceDraft })} />
-              </div>
-            )}
-
-            {/* ── Visual tab ── */}
-            {activeTab === "visual" && (
-              <div className="space-y-4">
-                <div>
-                  <label className="text-xs font-medium text-gray-600 mb-2 block">Brand Colors</label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <ColorField label="Primary" value={visualDraft.primary_color} onChange={(v) => setVisualDraft((d) => ({ ...d, primary_color: v }))} />
-                    <ColorField label="Primary Inverse" value={visualDraft.primary_color_inverse} onChange={(v) => setVisualDraft((d) => ({ ...d, primary_color_inverse: v }))} />
-                    <ColorField label="Secondary" value={visualDraft.secondary_color} onChange={(v) => setVisualDraft((d) => ({ ...d, secondary_color: v }))} />
-                    <ColorField label="Secondary Inverse" value={visualDraft.secondary_color_inverse} onChange={(v) => setVisualDraft((d) => ({ ...d, secondary_color_inverse: v }))} />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-xs font-medium text-gray-600 mb-1 block">Font Family (Google Fonts)</label>
-                  <select
-                    value={visualDraft.font_family || ""}
-                    onChange={(e) => setVisualDraft((d) => ({ ...d, font_family: e.target.value }))}
-                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-rose-300 bg-white"
-                  >
-                    <option value="">Select a font…</option>
-                    {GOOGLE_FONTS.map((f) => <option key={f} value={f}>{f}</option>)}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-medium text-gray-600 mb-1.5 block">Font Weights</label>
-                  <div className="flex flex-wrap gap-2">
-                    {[300, 400, 500, 600, 700, 800].map((w) => {
-                      const active = (visualDraft.font_weights || brand.font_weights || [400, 700]).includes(w);
-                      return (
-                        <button
-                          key={w}
-                          onClick={() => {
-                            const current = visualDraft.font_weights || brand.font_weights || [400, 700];
-                            setVisualDraft((d) => ({
-                              ...d,
-                              font_weights: active ? current.filter((x) => x !== w) : [...current, w],
-                            }));
-                          }}
-                          className={`text-xs px-3 py-1 rounded-full border font-medium transition-colors ${
-                            active ? "bg-rose-500 border-rose-500 text-white" : "bg-white border-gray-200 text-gray-600 hover:border-rose-200"
-                          }`}
-                          style={{ fontWeight: w }}
-                        >
-                          {w}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <TextField label="Background Style" value={visualDraft.background_style} onChange={(v) => setVisualDraft((d) => ({ ...d, background_style: v }))} placeholder="e.g. Clean minimalist white space with soft off-white sections" textarea />
-                <TextField label="Imagery Style" value={visualDraft.imagery_style} onChange={(v) => setVisualDraft((d) => ({ ...d, imagery_style: v }))} placeholder="e.g. Warm lifestyle photography with natural textures" textarea />
-                <TextField label="Typography Vibe" value={visualDraft.typography_vibe} onChange={(v) => setVisualDraft((d) => ({ ...d, typography_vibe: v }))} placeholder="e.g. High-contrast serifs for titles, modern sans-serifs for body" textarea />
-
-                <SaveButton saving={saving} saved={saved} onClick={() => saveTab(visualDraft)} />
-              </div>
-            )}
-
-            {/* ── Logo tab ── */}
-            {activeTab === "logo" && (
-              <div className="space-y-5">
-                {/* Current logo preview */}
-                {brand.logo_url && (
-                  <div className="flex items-center gap-4 p-4 rounded-xl bg-gray-50 border border-gray-100">
-                    <img src={brand.logo_url} alt="Logo" className="w-20 h-20 object-contain rounded-lg bg-white border border-gray-200 p-1" />
-                    <div>
-                      <p className="text-sm font-medium text-gray-800">Current logo</p>
-                      <p className="text-xs text-gray-400 mt-0.5">Upload a new one to replace it</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Upload */}
-                <div>
-                  <label className="text-xs font-medium text-gray-600 mb-2 block">Upload Logo</label>
-                  <label className="flex items-center justify-center gap-3 p-5 rounded-xl border-2 border-dashed border-rose-200 hover:border-rose-400 cursor-pointer transition-colors group bg-rose-50/30 hover:bg-rose-50">
-                    <span className="text-2xl">📎</span>
-                    <div className="text-center">
-                      <span className="text-sm font-medium text-rose-600 group-hover:text-rose-700">Choose a file</span>
-                      <p className="text-xs text-gray-400 mt-0.5">PNG, JPG, SVG, WebP — recommended 500×500 px</p>
-                    </div>
-                    <input type="file" className="hidden" accept=".png,.jpg,.jpeg,.svg,.webp" onChange={uploadLogo} />
-                  </label>
-                </div>
-
-                {/* Generate */}
-                <div className="rounded-xl border border-purple-100 bg-purple-50/50 p-4">
-                  <p className="text-sm font-semibold text-purple-900 mb-1">Generate a logo with AI</p>
-                  <p className="text-xs text-purple-600 mb-3">
-                    We'll use your brand name, colors, and style to generate a logo concept. Make sure your Identity and Visual tabs are filled in first.
-                  </p>
-                  <div className="flex items-center gap-2 text-xs text-purple-500 mb-3">
-                    <span className={`w-2 h-2 rounded-full ${brand.brand_name ? "bg-green-400" : "bg-gray-300"}`} />
-                    Brand name {brand.brand_name ? `"${brand.brand_name}"` : "(not set)"}
-                    <span className={`w-2 h-2 rounded-full ml-2 ${brand.primary_color ? "bg-green-400" : "bg-gray-300"}`} />
-                    Primary color {brand.primary_color || "(not set)"}
-                  </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600 mb-2 block">Tone</label>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {TONE_OPTIONS.map((t) => (
                   <button
-                    onClick={generateLogo}
-                    disabled={generatingLogo || !brand.brand_name}
-                    className="w-full py-2.5 rounded-xl bg-purple-600 text-white text-sm font-semibold hover:bg-purple-700 disabled:opacity-40 transition-colors"
+                    key={t}
+                    onClick={() => toggleTone(t)}
+                    className={`text-xs px-2.5 py-1 rounded-full border font-medium transition-colors ${
+                      toneList.includes(t)
+                        ? "bg-rose-500 border-rose-500 text-white"
+                        : "bg-white border-gray-200 text-gray-600 hover:border-rose-200"
+                    }`}
                   >
-                    {generatingLogo ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                        Generating…
-                      </span>
-                    ) : "✨ Generate Logo"}
+                    {t}
                   </button>
-                  {!brand.brand_name && (
-                    <p className="text-xs text-purple-400 mt-2 text-center">Set your brand name in the Identity tab first</p>
-                  )}
-                </div>
+                ))}
+              </div>
+              {toneList.filter((t) => !TONE_OPTIONS.includes(t)).map((t) => (
+                <span key={t} className="text-xs px-2.5 py-1 rounded-full bg-rose-500 text-white border border-rose-500 font-medium mr-1.5 mb-1.5 inline-flex items-center gap-1">
+                  {t}
+                  <button onClick={() => setToneList((prev) => prev.filter((x) => x !== t))} className="ml-0.5 opacity-70 hover:opacity-100">✕</button>
+                </span>
+              ))}
+              <div className="flex gap-2 mt-2">
+                <input
+                  value={customTone}
+                  onChange={(e) => setCustomTone(e.target.value)}
+                  placeholder="Add custom tone word…"
+                  onKeyDown={(e) => e.key === "Enter" && addCustomTone()}
+                  className="text-xs flex-1 border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-rose-300"
+                />
+                <button onClick={addCustomTone} className="text-xs px-3 py-1.5 rounded-lg bg-rose-100 text-rose-600 hover:bg-rose-200 font-medium">Add</button>
+              </div>
+            </div>
 
-                {/* Ratio */}
+            <TextField label="Writing Style" value={identityVoiceDraft.writing_style} onChange={(v) => setIdentityVoiceDraft((d) => ({ ...d, writing_style: v }))} placeholder="e.g. Descriptive, evocative, polished prose. Tactile and story-driven." textarea />
+
+            <SaveButton saving={saving} saved={saved} onClick={() => saveTab(identityVoiceDraft)} />
+          </div>
+        )}
+
+        {/* ── Visual tab ── */}
+        {activeTab === "visual" && (
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs font-medium text-gray-600 mb-2 block">Brand Colors</label>
+              <div className="grid grid-cols-2 gap-3">
+                <ColorField label="Primary" value={visualDraft.primary_color} onChange={(v) => setVisualDraft((d) => ({ ...d, primary_color: v }))} />
+                <ColorField label="Primary Inverse" value={visualDraft.primary_color_inverse} onChange={(v) => setVisualDraft((d) => ({ ...d, primary_color_inverse: v }))} />
+                <ColorField label="Secondary" value={visualDraft.secondary_color} onChange={(v) => setVisualDraft((d) => ({ ...d, secondary_color: v }))} />
+                <ColorField label="Secondary Inverse" value={visualDraft.secondary_color_inverse} onChange={(v) => setVisualDraft((d) => ({ ...d, secondary_color_inverse: v }))} />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-gray-600 mb-1 block">Font Family (Google Fonts)</label>
+              <select
+                value={visualDraft.font_family || ""}
+                onChange={(e) => setVisualDraft((d) => ({ ...d, font_family: e.target.value }))}
+                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-rose-300 bg-white"
+              >
+                <option value="">Select a font…</option>
+                {GOOGLE_FONTS.map((f) => <option key={f} value={f}>{f}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-gray-600 mb-1.5 block">Font Weights</label>
+              <div className="flex flex-wrap gap-2">
+                {[300, 400, 500, 600, 700, 800].map((w) => {
+                  const active = (visualDraft.font_weights || brand.font_weights || [400, 700]).includes(w);
+                  return (
+                    <button
+                      key={w}
+                      onClick={() => {
+                        const current = visualDraft.font_weights || brand.font_weights || [400, 700];
+                        setVisualDraft((d) => ({
+                          ...d,
+                          font_weights: active ? current.filter((x) => x !== w) : [...current, w],
+                        }));
+                      }}
+                      className={`text-xs px-3 py-1 rounded-full border font-medium transition-colors ${
+                        active ? "bg-rose-500 border-rose-500 text-white" : "bg-white border-gray-200 text-gray-600 hover:border-rose-200"
+                      }`}
+                      style={{ fontWeight: w }}
+                    >
+                      {w}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <TextField label="Background Style" value={visualDraft.background_style} onChange={(v) => setVisualDraft((d) => ({ ...d, background_style: v }))} placeholder="e.g. Clean minimalist white space with soft off-white sections" textarea />
+            <TextField label="Imagery Style" value={visualDraft.imagery_style} onChange={(v) => setVisualDraft((d) => ({ ...d, imagery_style: v }))} placeholder="e.g. Warm lifestyle photography with natural textures" textarea />
+            <TextField label="Typography Vibe" value={visualDraft.typography_vibe} onChange={(v) => setVisualDraft((d) => ({ ...d, typography_vibe: v }))} placeholder="e.g. High-contrast serifs for titles, modern sans-serifs for body" textarea />
+
+            <SaveButton saving={saving} saved={saved} onClick={() => saveTab(visualDraft)} />
+          </div>
+        )}
+
+        {/* ── Logo tab ── */}
+        {activeTab === "logo" && (
+          <div className="space-y-5">
+            {brand.logo_url && (
+              <div className="flex items-center gap-4 p-4 rounded-xl bg-gray-50 border border-gray-100">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={brand.logo_url} alt="Logo" className="w-20 h-20 object-contain rounded-lg bg-white border border-gray-200 p-1" />
                 <div>
-                  <label className="text-xs font-medium text-gray-600 mb-2 block">Logo Ratio</label>
-                  <div className="flex gap-2">
-                    {["1:1", "16:9", "4:1"].map((r) => (
-                      <button
-                        key={r}
-                        onClick={() => saveTab({ logo_ratio: r })}
-                        className={`flex-1 py-2 rounded-lg border text-xs font-medium transition-colors ${
-                          brand.logo_ratio === r
-                            ? "border-rose-400 bg-rose-50 text-rose-600"
-                            : "border-gray-200 text-gray-600 hover:border-rose-200"
-                        }`}
-                      >
-                        {r}
-                      </button>
-                    ))}
-                  </div>
+                  <p className="text-sm font-medium text-gray-800">Current logo</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Upload a new one to replace it</p>
                 </div>
               </div>
             )}
+
+            <div>
+              <label className="text-xs font-medium text-gray-600 mb-2 block">Upload Logo</label>
+              <label className="flex items-center justify-center gap-3 p-5 rounded-xl border-2 border-dashed border-rose-200 hover:border-rose-400 cursor-pointer transition-colors group bg-rose-50/30 hover:bg-rose-50">
+                <span className="text-2xl">📎</span>
+                <div className="text-center">
+                  <span className="text-sm font-medium text-rose-600 group-hover:text-rose-700">Choose a file</span>
+                  <p className="text-xs text-gray-400 mt-0.5">PNG, JPG, SVG, WebP — recommended 500×500 px</p>
+                </div>
+                <input type="file" className="hidden" accept=".png,.jpg,.jpeg,.svg,.webp" onChange={uploadLogo} />
+              </label>
+            </div>
+
+            <div className="rounded-xl border border-purple-100 bg-purple-50/50 p-4">
+              <p className="text-sm font-semibold text-purple-900 mb-1">Generate a logo with AI</p>
+              <p className="text-xs text-purple-600 mb-3">
+                We&apos;ll use your brand name, colors, and style to generate a logo concept. Fill in Identity &amp; Voice first.
+              </p>
+              <div className="flex items-center gap-2 text-xs text-purple-500 mb-3">
+                <span className={`w-2 h-2 rounded-full ${brand.brand_name ? "bg-green-400" : "bg-gray-300"}`} />
+                Brand name {brand.brand_name ? `"${brand.brand_name}"` : "(not set)"}
+                <span className={`w-2 h-2 rounded-full ml-2 ${brand.primary_color ? "bg-green-400" : "bg-gray-300"}`} />
+                Primary color {brand.primary_color || "(not set)"}
+              </div>
+              <button
+                onClick={generateLogo}
+                disabled={generatingLogo || !brand.brand_name}
+                className="w-full py-2.5 rounded-xl bg-purple-600 text-white text-sm font-semibold hover:bg-purple-700 disabled:opacity-40 transition-colors"
+              >
+                {generatingLogo ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    Generating…
+                  </span>
+                ) : "✨ Generate Logo"}
+              </button>
+              {!brand.brand_name && (
+                <p className="text-xs text-purple-400 mt-2 text-center">Set your brand name in Identity &amp; Voice first</p>
+              )}
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-gray-600 mb-2 block">Logo Ratio</label>
+              <div className="flex gap-2">
+                {["1:1", "16:9", "4:1"].map((r) => (
+                  <button
+                    key={r}
+                    onClick={() => saveTab({ logo_ratio: r })}
+                    className={`flex-1 py-2 rounded-lg border text-xs font-medium transition-colors ${
+                      brand.logo_ratio === r
+                        ? "border-rose-400 bg-rose-50 text-rose-600"
+                        : "border-gray-200 text-gray-600 hover:border-rose-200"
+                    }`}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
-        </>
-      )}
+        )}
+
+        {/* ── Setup tab ── */}
+        {activeTab === "setup" && (
+          <SetupTab
+            onSubmitQA={submitQA}
+            onFile={handleFileUpload}
+            onUrl={extractFromWebsite}
+            extracting={extracting}
+          />
+        )}
+      </div>
     </div>
   );
 }

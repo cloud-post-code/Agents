@@ -92,7 +92,7 @@ function A2UICard({ payload }: { payload: Record<string, unknown> }) {
   if (surface === "product_list") return <ProductListCard {...(props as unknown as Parameters<typeof ProductListCard>[0])} />;
   if (surface === "discount") return <DiscountCard {...(props as unknown as Parameters<typeof DiscountCard>[0])} />;
   if (surface === "bulk_listing") return <BulkListingCard {...(props as unknown as Parameters<typeof BulkListingCard>[0])} />;
-  if (surface === "brand_setup") return <BrandSetupCard />;
+  if (surface === "brand_setup") return <BrandSetupCard initialTab={(props as { tab?: "identity_voice" | "visual" | "logo" | "setup" }).tab} />;
   if (surface === "social_post_preview") return <SocialPostPreviewCard {...(props as unknown as Parameters<typeof SocialPostPreviewCard>[0])} />;
   if (surface === "flier_preview") return <FlierPreviewCard {...(props as unknown as Parameters<typeof FlierPreviewCard>[0])} />;
 

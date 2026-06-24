@@ -323,22 +323,29 @@ class ArtisanAgent:
                 )
                 brand = result.scalar_one_or_none()
 
-                # Check if the brand has meaningful data
-                has_brand = bool(
-                    brand and (
-                        brand.brand_name or brand.tone_adjectives or
-                        brand.writing_style or brand.overview
-                    )
-                )
+                # Compute completion % (same 8-field formula as the frontend)
+                if brand:
+                    filled = sum(bool(x) for x in [
+                        brand.brand_name, brand.tagline, brand.primary_color,
+                        brand.font_family, brand.tone_adjectives,
+                        brand.overview, brand.writing_style, brand.logo_url,
+                    ])
+                    completion_pct = round(filled / 8 * 100)
+                else:
+                    completion_pct = 0
+
+                # ≥20% counts as "has brand" — enough to write useful copy
+                has_brand = completion_pct >= 20
 
                 if not has_brand:
                     return {
                         "has_brand": False,
+                        "completion_pct": completion_pct,
                         "status": "no_brand",
                         "instruction": (
                             "STOP. Do not proceed with copy generation. "
-                            "Tell the user their brand profile is not set up yet and call "
-                            "render_ui(surface='brand_setup', props={}) so they can set it up now. "
+                            "The brand profile is less than 20% complete. "
+                            "Call render_ui(surface='brand_setup', props={}) so the user can set up their brand. "
                             "Say: 'Before I write anything, I need your brand info — fill this in and I'll tailor everything to your style.'"
                         ),
                     }
@@ -360,6 +367,7 @@ class ArtisanAgent:
 
                 return {
                     "has_brand": True,
+                    "completion_pct": completion_pct,
                     "brand_name": brand.brand_name,
                     "tagline": brand.tagline,
                     "overview": brand.overview,
