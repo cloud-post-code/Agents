@@ -13,6 +13,55 @@ from app.models.user import User
 router = APIRouter(tags=["agent-history"])
 
 
+@router.get("/agents/{role}/history")
+async def get_agent_history_by_role(
+    role: str,
+    limit: int = Query(200, ge=1, le=500),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """
+    Return message history for the current user's session for a given agent role.
+    Matches the shape the AgentShell frontend expects:
+      { session_id, role, messages: [{id, role, content, created_at}] }
+    """
+    import re as _re
+
+    session_result = await db.execute(
+        select(AgentSession).where(
+            AgentSession.tenant_id == current_user.tenant_id,
+            AgentSession.agent_role == role,
+        )
+    )
+    session = session_result.scalar_one_or_none()
+    if not session:
+        return {"session_id": None, "role": role, "messages": []}
+
+    msgs_result = await db.execute(
+        select(AgentMessage)
+        .where(
+            AgentMessage.session_id == session.id,
+            AgentMessage.role.in_(["user", "assistant", "card"]),
+        )
+        .order_by(AgentMessage.created_at.asc())
+        .limit(limit)
+    )
+    messages = msgs_result.scalars().all()
+
+    _base64 = _re.compile(r'data:[^;]+;base64,[A-Za-z0-9+/=]{100,}', _re.DOTALL)
+    items = [
+        {
+            "id": str(m.id),
+            "role": m.role,
+            "content": _base64.sub("[image]", m.content or ""),
+            "created_at": m.created_at.isoformat(),
+        }
+        for m in messages
+    ]
+
+    return {"session_id": str(session.id), "role": role, "messages": items}
+
+
 @router.get("/agent/sessions/{session_id}/messages")
 async def get_session_messages(
     session_id: str,

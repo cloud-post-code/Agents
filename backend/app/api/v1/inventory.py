@@ -174,6 +174,60 @@ async def update_product(
     return _product_dict(product)
 
 
+class BulkUpdateItem(BaseModel):
+    id: str
+    name: Optional[str] = None
+    sku: Optional[str] = None
+    price: Optional[float] = None
+    cost: Optional[float] = None
+    stock_qty: Optional[int] = None
+    reorder_point: Optional[int] = None
+    description: Optional[str] = None
+    weight_grams: Optional[int] = None
+
+
+class BulkUpdateRequest(BaseModel):
+    updates: list[BulkUpdateItem]
+
+
+@router.post("/bulk-update")
+async def bulk_update_products(
+    body: BulkUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update multiple products in one request. Returns list of updated products."""
+    updated = []
+    errors = []
+    for item in body.updates:
+        try:
+            product = await db.scalar(
+                select(Product).where(
+                    Product.id == uuid.UUID(item.id),
+                    Product.tenant_id == current_user.tenant_id,
+                    Product.deleted_at.is_(None),
+                )
+            )
+            if product is None:
+                errors.append({"id": item.id, "error": "not found"})
+                continue
+            fields = item.model_dump(exclude_none=True, exclude={"id"})
+            for field, value in fields.items():
+                setattr(product, field, value)
+            updated.append(product)
+        except Exception as e:
+            errors.append({"id": item.id, "error": str(e)})
+    if updated:
+        await db.commit()
+        for p in updated:
+            await db.refresh(p)
+    return {
+        "updated": [_product_dict(p) for p in updated],
+        "errors": errors,
+        "updated_count": len(updated),
+    }
+
+
 @router.delete("/{product_id}", status_code=204)
 async def delete_product(
     product_id: uuid.UUID,
