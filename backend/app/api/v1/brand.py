@@ -49,6 +49,12 @@ class ExtractFromURLRequest(BaseModel):
 
 
 class QAAnswers(BaseModel):
+    # New 3-question format (voice-first)
+    brand_sound_feel: str | None = None      # How brand sounds + what it makes people feel
+    who_connect_with: str | None = None      # Who to connect with + what they need to hear
+    words_and_rules: str | None = None       # Words/phrases/tones to always/never use
+
+    # Legacy fields (kept for backwards compat)
     business_name: str | None = None
     what_you_sell: str | None = None
     who_buys_from_you: str | None = None
@@ -108,21 +114,37 @@ def _extract_colors_from_text(text: str) -> list[str]:
 
 
 def _extract_from_qa(answers: QAAnswers) -> dict[str, Any]:
-    """Convert Q&A answers into a BrandDNA field map."""
-    tone_words = []
-    vibe = answers.brand_vibe or ""
-    style_words = ["elegant", "playful", "bold", "minimal", "warm", "modern", "rustic",
-                   "artisanal", "sophisticated", "timeless", "vibrant", "luxurious"]
-    for word in style_words:
-        if word.lower() in vibe.lower():
-            tone_words.append(word.capitalize())
-    if not tone_words and vibe:
-        tone_words = [w.strip().capitalize() for w in vibe.split(",") if w.strip()][:5]
+    """Convert Q&A answers into a BrandDNA field map using keyword extraction."""
+    TONE_WORDS = [
+        "elegant", "playful", "bold", "minimal", "warm", "modern", "rustic",
+        "artisanal", "sophisticated", "timeless", "vibrant", "luxurious",
+        "authentic", "earthy", "refined", "energetic", "calm", "inspiring",
+        "friendly", "professional", "creative", "honest", "passionate",
+    ]
 
-    colors = []
-    if answers.colors_you_love:
-        colors = _extract_colors_from_text(answers.colors_you_love)
+    # Combine all free-text for tone extraction
+    combined_text = " ".join(filter(None, [
+        answers.brand_sound_feel, answers.who_connect_with, answers.words_and_rules,
+        answers.brand_vibe, answers.business_description,
+    ])).lower()
 
+    tone_words = [w.capitalize() for w in TONE_WORDS if w in combined_text][:6]
+
+    # Build writing style from voice answers
+    writing_parts = []
+    if answers.brand_sound_feel:
+        writing_parts.append(f"Voice: {answers.brand_sound_feel.strip()}")
+    if answers.words_and_rules:
+        writing_parts.append(f"Rules: {answers.words_and_rules.strip()}")
+    writing_style = "\n".join(writing_parts) or None
+
+    # Target audience from new or legacy field
+    target = answers.who_connect_with or answers.who_buys_from_you
+
+    # Colors from legacy field
+    colors = _extract_colors_from_text(answers.colors_you_love or "")
+
+    # Font from legacy field
     font = None
     if answers.fonts_you_love:
         common_google = ["Lato", "Roboto", "Open Sans", "Montserrat", "Playfair Display",
@@ -136,13 +158,13 @@ def _extract_from_qa(answers: QAAnswers) -> dict[str, Any]:
             font = answers.fonts_you_love.split(",")[0].strip()
 
     return {
-        "brand_name": answers.business_name,
-        "tagline": answers.tagline_or_slogan,
-        "overview": answers.business_description,
-        "product_category": answers.what_you_sell,
-        "target_audience": answers.who_buys_from_you,
+        "brand_name": answers.business_name or None,
+        "tagline": answers.tagline_or_slogan or None,
+        "overview": answers.business_description or answers.brand_sound_feel or None,
+        "product_category": answers.what_you_sell or None,
+        "target_audience": target or None,
         "tone_adjectives": tone_words or None,
-        "writing_style": f"Inspired by a {vibe} brand voice." if vibe else None,
+        "writing_style": writing_style,
         "primary_color": colors[0] if colors else None,
         "secondary_color": colors[1] if len(colors) > 1 else None,
         "font_family": font,
@@ -231,6 +253,59 @@ async def extract_from_qa(
     await db.commit()
     await db.refresh(brand)
     return {"brand": _brand_to_dict(brand), "extraction": extracted}
+
+
+@router.post("/generate-logo")
+async def generate_logo(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Generate a logo using DALL-E based on the current brand DNA."""
+    brand = await _get_or_create_brand(current_user.tenant_id, db)
+    if not brand.brand_name:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="Brand name is required to generate a logo")
+
+    logo_url = await _generate_logo_image(brand)
+    brand.logo_url = logo_url
+    await db.commit()
+    return {"logo_url": logo_url}
+
+
+async def _generate_logo_image(brand: BrandDNA) -> str:
+    """Use DALL-E to generate a logo and return its URL."""
+    api_key = os.environ.get("OPENAI_API_KEY", "")
+    if not api_key or api_key.startswith("sk-test"):
+        return ""
+
+    from openai import AsyncOpenAI
+    client = AsyncOpenAI(api_key=api_key)
+
+    color_desc = f"primary color {brand.primary_color}" if brand.primary_color else "neutral colors"
+    tone_desc = ", ".join(brand.tone_adjectives[:3]) if brand.tone_adjectives else "modern and clean"
+    style_desc = brand.typography_vibe or "clean and professional"
+
+    prompt = (
+        f"A minimal professional logo for a brand called '{brand.brand_name}'. "
+        f"Style: {tone_desc}. {style_desc}. {color_desc}. "
+        f"White or transparent background. No text unless it is the brand name as a wordmark. "
+        f"High quality, SVG-style flat design, suitable for use as a brand logo."
+    )
+    if brand.product_category:
+        prompt += f" The brand sells: {brand.product_category}."
+
+    try:
+        resp = await client.images.generate(
+            model="dall-e-3",
+            prompt=prompt,
+            size="1024x1024",
+            quality="standard",
+            n=1,
+        )
+        return resp.data[0].url or ""
+    except Exception as exc:
+        logger.warning(f"Logo generation failed: {exc}")
+        return ""
 
 
 # ─── LLM Extraction Helpers ────────────────────────────────────────────────────

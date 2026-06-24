@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 
-type SetupTab = "identity" | "voice" | "visual" | "source";
+type SetupTab = "identity" | "voice" | "visual" | "logo";
 
 interface BrandDNA {
   brand_name?: string;
@@ -42,14 +42,216 @@ const TONE_OPTIONS = [
   "Vibrant", "Authentic", "Earthy", "Refined",
 ];
 
+// Three big open-ended voice questions
 const QA_QUESTIONS = [
-  { key: "business_name", label: "What's your business name?", placeholder: "e.g. Global Threads" },
-  { key: "what_you_sell", label: "What do you sell?", placeholder: "e.g. Handmade ceramic mugs and artisanal candles" },
-  { key: "who_buys_from_you", label: "Who are your customers?", placeholder: "e.g. Design-conscious homeowners who love handmade goods" },
-  { key: "brand_vibe", label: "Describe your brand vibe in a few words", placeholder: "e.g. Warm, minimal, earthy, sophisticated" },
-  { key: "tagline_or_slogan", label: "Do you have a tagline or slogan?", placeholder: "e.g. Crafted for a Global Audience" },
-  { key: "business_description", label: "Tell us a bit more about your brand story", placeholder: "e.g. We source ethically from artisans around the world..." },
+  {
+    key: "brand_sound_feel",
+    label: "How do you want your brand to sound when talking to people? What does it make them feel?",
+    placeholder: "e.g. Warm and confident, like a knowledgeable friend. It should make people feel inspired and understood.",
+    rows: 4,
+  },
+  {
+    key: "who_connect_with",
+    label: "Who are you trying to connect with, and what do they need to hear from you?",
+    placeholder: "e.g. Conscious shoppers who want quality over quantity. They need to hear that this was made with real care.",
+    rows: 4,
+  },
+  {
+    key: "words_and_rules",
+    label: "What words, phrases, tones, or topics should your brand always use — or never use?",
+    placeholder: "e.g. Always: handcrafted, artisan, story. Never: cheap, discount, fast fashion.",
+    rows: 4,
+  },
 ];
+
+function useSpeechRecognition(onResult: (text: string) => void) {
+  const recognitionRef = useRef<{ start(): void; stop(): void; onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null; onend: (() => void) | null } | null>(null);
+  const [listening, setListening] = useState(false);
+
+  function startListening() {
+    const SpeechRecognition =
+      (window as unknown as { SpeechRecognition?: new () => typeof recognitionRef.current; webkitSpeechRecognition?: new () => typeof recognitionRef.current }).SpeechRecognition ||
+      (window as unknown as { webkitSpeechRecognition?: new () => typeof recognitionRef.current }).webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+
+    recognitionRef.current = new SpeechRecognition();
+    const rec = recognitionRef.current;
+    if (!rec) return;
+    rec.onresult = (e) => {
+      const transcript = Array.from(e.results)
+        .map((r) => r[0].transcript)
+        .join(" ");
+      onResult(transcript);
+    };
+    rec.onend = () => setListening(false);
+    rec.start();
+    setListening(true);
+  }
+
+  function stopListening() {
+    recognitionRef.current?.stop();
+    setListening(false);
+  }
+
+  return { listening, startListening, stopListening };
+}
+
+// ─── Source Picker ──────────────────────────────────────────────────────────
+
+function SourcePicker({
+  onQA, onFile, onUrl, extracting,
+}: {
+  onQA: () => void;
+  onFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onUrl: (url: string) => void;
+  extracting: boolean;
+}) {
+  const [url, setUrl] = useState("");
+  return (
+    <div className="p-6 space-y-4">
+      <div className="text-center mb-2">
+        <p className="text-sm font-semibold text-gray-800">How would you like to set up your brand?</p>
+        <p className="text-xs text-gray-500 mt-0.5">You can always edit or re-import later</p>
+      </div>
+
+      {/* Option tiles */}
+      <div className="grid grid-cols-1 gap-3">
+        {/* Q&A */}
+        <button
+          onClick={onQA}
+          className="flex items-center gap-4 p-4 rounded-2xl border-2 border-rose-100 bg-rose-50/50 hover:border-rose-300 hover:bg-rose-50 transition-all text-left group"
+        >
+          <div className="w-11 h-11 rounded-xl bg-rose-500 flex items-center justify-center text-xl shrink-0 shadow-sm">
+            💬
+          </div>
+          <div>
+            <div className="text-sm font-semibold text-gray-900">Answer 3 questions</div>
+            <div className="text-xs text-gray-500 mt-0.5">Tell us how your brand sounds and who it's for — type or speak your answers</div>
+          </div>
+          <span className="ml-auto text-rose-300 group-hover:text-rose-500 text-lg">→</span>
+        </button>
+
+        {/* File upload */}
+        <label className="flex items-center gap-4 p-4 rounded-2xl border-2 border-gray-100 bg-gray-50/50 hover:border-rose-200 hover:bg-rose-50/30 transition-all text-left cursor-pointer group">
+          <div className="w-11 h-11 rounded-xl bg-gray-800 flex items-center justify-center text-xl shrink-0 shadow-sm">
+            📎
+          </div>
+          <div>
+            <div className="text-sm font-semibold text-gray-900">Upload a file</div>
+            <div className="text-xs text-gray-500 mt-0.5">Brand guide, PDF, DOCX, image — we'll extract your brand info automatically</div>
+          </div>
+          {extracting ? (
+            <span className="ml-auto text-xs text-rose-500 animate-pulse">Extracting…</span>
+          ) : (
+            <span className="ml-auto text-gray-300 group-hover:text-rose-400 text-lg">→</span>
+          )}
+          <input type="file" className="hidden" accept=".pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.webp" onChange={onFile} disabled={extracting} />
+        </label>
+
+        {/* Website URL */}
+        <div className="flex items-center gap-4 p-4 rounded-2xl border-2 border-gray-100 bg-gray-50/50">
+          <div className="w-11 h-11 rounded-xl bg-indigo-600 flex items-center justify-center text-xl shrink-0 shadow-sm">
+            🌐
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-semibold text-gray-900 mb-1">Paste your website URL</div>
+            <input
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://yourbrand.com"
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-rose-300 bg-white"
+              onKeyDown={(e) => e.key === "Enter" && url && onUrl(url)}
+            />
+          </div>
+          <button
+            onClick={() => url && onUrl(url)}
+            disabled={!url || extracting}
+            className="shrink-0 text-xs px-3 py-2 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 font-medium transition-colors"
+          >
+            {extracting ? "…" : "Go"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Q&A Panel ──────────────────────────────────────────────────────────────
+
+function VoiceButton({ onTranscript }: { onTranscript: (t: string) => void }) {
+  const { listening, startListening, stopListening } = useSpeechRecognition(onTranscript);
+  const supported = typeof window !== "undefined" && ("SpeechRecognition" in window || "webkitSpeechRecognition" in window);
+  if (!supported) return null;
+
+  return (
+    <button
+      type="button"
+      onClick={listening ? stopListening : startListening}
+      title={listening ? "Stop recording" : "Speak your answer"}
+      className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border font-medium transition-colors ${
+        listening
+          ? "bg-red-500 border-red-500 text-white animate-pulse"
+          : "bg-white border-gray-200 text-gray-500 hover:border-rose-300 hover:text-rose-500"
+      }`}
+    >
+      {listening ? "🔴 Recording…" : "🎙 Speak"}
+    </button>
+  );
+}
+
+function QAPanel({
+  onSubmit, onCancel, extracting,
+}: {
+  onSubmit: (answers: Record<string, string>) => void;
+  onCancel: () => void;
+  extracting: boolean;
+}) {
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+
+  function set(key: string, value: string) {
+    setAnswers((prev) => ({ ...prev, [key]: value }));
+  }
+
+  const filled = QA_QUESTIONS.filter((q) => (answers[q.key] || "").trim().length > 0).length;
+
+  return (
+    <div className="p-5 space-y-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-semibold text-gray-900">Tell us about your brand</p>
+          <p className="text-xs text-gray-500 mt-0.5">Answer what you can — nothing is required</p>
+        </div>
+        <button onClick={onCancel} className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1">← Back</button>
+      </div>
+
+      {QA_QUESTIONS.map((q) => (
+        <div key={q.key} className="space-y-1.5">
+          <div className="flex items-start justify-between gap-2">
+            <label className="text-sm font-medium text-gray-800 leading-snug">{q.label}</label>
+            <VoiceButton onTranscript={(t) => set(q.key, (answers[q.key] ? answers[q.key] + " " : "") + t)} />
+          </div>
+          <textarea
+            value={answers[q.key] || ""}
+            onChange={(e) => set(q.key, e.target.value)}
+            placeholder={q.placeholder}
+            rows={q.rows}
+            className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-rose-300 resize-none leading-relaxed"
+          />
+        </div>
+      ))}
+
+      <button
+        onClick={() => onSubmit(answers)}
+        disabled={extracting || filled === 0}
+        className="w-full py-3 rounded-xl bg-rose-500 text-white text-sm font-semibold hover:bg-rose-600 disabled:opacity-40 transition-colors"
+      >
+        {extracting ? "Building your brand profile…" : `Build my brand profile${filled > 0 ? ` (${filled}/${QA_QUESTIONS.length} answered)` : ""}`}
+      </button>
+    </div>
+  );
+}
+
+// ─── Main component ──────────────────────────────────────────────────────────
 
 export function BrandSetupCard() {
   const { token } = useAuth();
@@ -59,12 +261,16 @@ export function BrandSetupCard() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [extracting, setExtracting] = useState(false);
-  const [websiteUrl, setWebsiteUrl] = useState("");
-  const [qaAnswers, setQaAnswers] = useState<Record<string, string>>({});
   const [qaMode, setQaMode] = useState(false);
   const [toneList, setToneList] = useState<string[]>([]);
   const [customTone, setCustomTone] = useState("");
-  const [extractMessage, setExtractMessage] = useState("");
+  const [notice, setNotice] = useState("");
+  const [generatingLogo, setGeneratingLogo] = useState(false);
+
+  // Local tab drafts — committed by one Save button per tab
+  const [identityDraft, setIdentityDraft] = useState<Partial<BrandDNA>>({});
+  const [voiceDraft, setVoiceDraft] = useState<Partial<BrandDNA>>({});
+  const [visualDraft, setVisualDraft] = useState<Partial<BrandDNA>>({});
 
   useEffect(() => {
     if (!token) return;
@@ -77,7 +283,30 @@ export function BrandSetupCard() {
       .finally(() => setLoading(false));
   }, [token]);
 
-  async function save(patch: Partial<BrandDNA>) {
+  // Sync drafts when brand loads
+  useEffect(() => {
+    setIdentityDraft({
+      brand_name: brand.brand_name,
+      tagline: brand.tagline,
+      product_category: brand.product_category,
+      target_audience: brand.target_audience,
+      overview: brand.overview,
+    });
+    setVoiceDraft({ writing_style: brand.writing_style });
+    setVisualDraft({
+      primary_color: brand.primary_color,
+      primary_color_inverse: brand.primary_color_inverse,
+      secondary_color: brand.secondary_color,
+      secondary_color_inverse: brand.secondary_color_inverse,
+      font_family: brand.font_family,
+      font_weights: brand.font_weights,
+      background_style: brand.background_style,
+      imagery_style: brand.imagery_style,
+      typography_vibe: brand.typography_vibe,
+    });
+  }, [brand.brand_name]); // re-sync when brand first loads
+
+  async function saveTab(patch: Partial<BrandDNA>) {
     if (!token) return;
     setSaving(true);
     setSaved(false);
@@ -88,31 +317,10 @@ export function BrandSetupCard() {
       });
       setBrand(updated);
       setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      setNotice("Saved!");
+      setTimeout(() => { setSaved(false); setNotice(""); }, 2000);
     } finally {
       setSaving(false);
-    }
-  }
-
-  async function extractFromWebsite() {
-    if (!websiteUrl || !token) return;
-    setExtracting(true);
-    setExtractMessage("");
-    try {
-      const data = await apiFetch<{ brand: BrandDNA }>("/api/v1/brand/extract/url", token, {
-        method: "POST",
-        body: JSON.stringify({ url: websiteUrl }),
-      });
-      if (data.brand) {
-        setBrand(data.brand);
-        setToneList(data.brand.tone_adjectives || []);
-        setExtractMessage("Brand extracted! Review the fields below and save.");
-        setActiveTab("identity");
-      }
-    } catch {
-      setExtractMessage("Could not extract from that URL. Try another or fill in manually.");
-    } finally {
-      setExtracting(false);
     }
   }
 
@@ -120,7 +328,7 @@ export function BrandSetupCard() {
     const file = e.target.files?.[0];
     if (!file || !token) return;
     setExtracting(true);
-    setExtractMessage("");
+    setNotice("");
     const form = new FormData();
     form.append("file", file);
     const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -134,28 +342,50 @@ export function BrandSetupCard() {
       if (data.brand) {
         setBrand(data.brand);
         setToneList(data.brand.tone_adjectives || []);
-        setExtractMessage("Brand extracted from file! Review the fields and save.");
+        setNotice("Brand extracted from file!");
         setActiveTab("identity");
       }
     } catch {
-      setExtractMessage("Could not read that file. Try PDF, DOCX, TXT, or an image.");
+      setNotice("Could not read that file. Try PDF, DOCX, TXT, or an image.");
     } finally {
       setExtracting(false);
     }
   }
 
-  async function submitQA() {
+  async function extractFromWebsite(url: string) {
+    if (!token) return;
+    setExtracting(true);
+    setNotice("");
+    try {
+      const data = await apiFetch<{ brand: BrandDNA }>("/api/v1/brand/extract/url", token, {
+        method: "POST",
+        body: JSON.stringify({ url }),
+      });
+      if (data.brand) {
+        setBrand(data.brand);
+        setToneList(data.brand.tone_adjectives || []);
+        setNotice("Brand extracted from your website!");
+        setActiveTab("identity");
+      }
+    } catch {
+      setNotice("Could not extract from that URL. Try another or fill in manually.");
+    } finally {
+      setExtracting(false);
+    }
+  }
+
+  async function submitQA(answers: Record<string, string>) {
     if (!token) return;
     setExtracting(true);
     try {
       const data = await apiFetch<{ brand: BrandDNA }>("/api/v1/brand/extract/qa", token, {
         method: "POST",
-        body: JSON.stringify(qaAnswers),
+        body: JSON.stringify(answers),
       });
       if (data.brand) {
         setBrand(data.brand);
         setToneList(data.brand.tone_adjectives || []);
-        setExtractMessage("Brand profile created from your answers! Review and save.");
+        setNotice("Brand profile created from your answers!");
         setQaMode(false);
         setActiveTab("identity");
       }
@@ -164,17 +394,57 @@ export function BrandSetupCard() {
     }
   }
 
+  async function generateLogo() {
+    if (!token) return;
+    setGeneratingLogo(true);
+    setNotice("Generating logo…");
+    try {
+      const data = await apiFetch<{ logo_url: string }>("/api/v1/brand/generate-logo", token, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      if (data.logo_url) {
+        await saveTab({ logo_url: data.logo_url });
+        setNotice("Logo generated!");
+      }
+    } catch {
+      setNotice("Logo generation requires a brand name and colors. Fill those in first.");
+    } finally {
+      setGeneratingLogo(false);
+    }
+  }
+
+  async function uploadLogo(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !token) return;
+    const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    const form = new FormData();
+    form.append("file", file);
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/upload`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      });
+      const data = await res.json();
+      const url = data.url || data.file_url;
+      if (url) {
+        await saveTab({ logo_url: url });
+        setBrand((b) => ({ ...b, logo_url: url }));
+        setNotice("Logo uploaded!");
+      }
+    } catch {
+      setNotice("Upload failed. Try again.");
+    }
+  }
+
   function toggleTone(t: string) {
-    setToneList((prev) =>
-      prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]
-    );
+    setToneList((prev) => prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]);
   }
 
   function addCustomTone() {
     const trimmed = customTone.trim();
-    if (trimmed && !toneList.includes(trimmed)) {
-      setToneList((prev) => [...prev, trimmed]);
-    }
+    if (trimmed && !toneList.includes(trimmed)) setToneList((prev) => [...prev, trimmed]);
     setCustomTone("");
   }
 
@@ -188,140 +458,154 @@ export function BrandSetupCard() {
     );
   }
 
-  const hasBrand = !!(brand.brand_name || brand.primary_color);
-  const completionFields = [
+  // Completion — ≥20% = "Ready"
+  const filledFields = [
     brand.brand_name, brand.tagline, brand.primary_color,
-    brand.font_family, brand.tone_adjectives?.length, brand.overview,
-  ];
-  const completion = Math.round((completionFields.filter(Boolean).length / completionFields.length) * 100);
+    brand.font_family, toneList.length > 0 ? "yes" : null,
+    brand.overview, brand.writing_style, brand.logo_url,
+  ].filter(Boolean).length;
+  const totalFields = 8;
+  const pct = Math.round((filledFields / totalFields) * 100);
+  const isReady = pct >= 20;
+  const hasAnyBrand = filledFields > 0;
+
+  // Show source picker when brand is completely empty
+  const showSourcePicker = !hasAnyBrand && !qaMode;
 
   return (
-    <div className="rounded-2xl border border-rose-100 bg-white shadow-sm overflow-hidden w-full max-w-2xl">
+    <div className="rounded-2xl border border-rose-100 bg-white shadow-sm overflow-hidden w-full">
       {/* Header */}
-      <div className="bg-gradient-to-r from-rose-50 to-pink-50 px-5 py-4 border-b border-rose-100">
-        <div className="flex items-center justify-between mb-2">
+      <div className="bg-gradient-to-r from-rose-50 to-pink-50 px-5 py-3.5 border-b border-rose-100">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-lg">🎨</span>
-            <h3 className="font-semibold text-gray-900 text-sm">Brand DNA</h3>
-            {hasBrand && (
-              <span className="text-xs bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full font-medium">
+            <span className="text-base">🎨</span>
+            <span className="font-semibold text-gray-900 text-sm">Brand DNA</span>
+            {brand.brand_name && (
+              <span className="text-xs bg-white border border-rose-200 text-rose-700 px-2 py-0.5 rounded-full font-medium">
                 {brand.brand_name}
               </span>
             )}
           </div>
           <div className="flex items-center gap-2">
-            <div className="text-xs text-gray-500">{completion}% complete</div>
-            <div className="w-16 h-1.5 bg-rose-100 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-rose-400 rounded-full transition-all"
-                style={{ width: `${completion}%` }}
-              />
+            {isReady ? (
+              <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">✓ Ready</span>
+            ) : (
+              <span className="text-xs text-gray-400">{pct}%</span>
+            )}
+            <div className="w-14 h-1.5 bg-rose-100 rounded-full overflow-hidden">
+              <div className="h-full bg-rose-400 rounded-full transition-all" style={{ width: `${pct}%` }} />
             </div>
+            {/* Re-import button when brand exists */}
+            {hasAnyBrand && !qaMode && (
+              <button
+                onClick={() => setQaMode(true)}
+                className="text-xs text-gray-400 hover:text-rose-500 ml-1"
+                title="Re-import or update brand"
+              >
+                ↺
+              </button>
+            )}
           </div>
         </div>
-
-        {/* Quick source row */}
-        {!qaMode && (
-          <div className="flex gap-2 flex-wrap mt-1">
-            <button
-              onClick={() => setQaMode(true)}
-              className="text-xs px-3 py-1 rounded-full bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 transition-colors font-medium"
-            >
-              💬 Answer questions
-            </button>
-            <label className="text-xs px-3 py-1 rounded-full bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 transition-colors font-medium cursor-pointer">
-              📎 Upload file
-              <input type="file" className="hidden" accept=".pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.webp" onChange={handleFileUpload} />
-            </label>
-            <div className="flex items-center gap-1 flex-1 min-w-0">
-              <input
-                value={websiteUrl}
-                onChange={(e) => setWebsiteUrl(e.target.value)}
-                placeholder="🌐 Paste your website URL"
-                className="text-xs px-3 py-1 rounded-full border border-rose-200 bg-white text-gray-700 flex-1 min-w-0 focus:outline-none focus:ring-1 focus:ring-rose-300"
-                onKeyDown={(e) => e.key === "Enter" && extractFromWebsite()}
-              />
-              <button
-                onClick={extractFromWebsite}
-                disabled={!websiteUrl || extracting}
-                className="text-xs px-3 py-1 rounded-full bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-50 transition-colors font-medium whitespace-nowrap"
-              >
-                {extracting ? "Extracting…" : "Extract"}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {extractMessage && (
-          <p className="text-xs text-rose-600 mt-2 font-medium">{extractMessage}</p>
+        {notice && (
+          <p className={`text-xs mt-1.5 font-medium ${notice.includes("not") || notice.includes("fail") ? "text-amber-600" : "text-rose-600"}`}>
+            {notice}
+          </p>
         )}
       </div>
 
-      {/* Q&A Mode */}
-      {qaMode ? (
-        <div className="p-5 space-y-4">
-          <div className="flex items-center justify-between mb-1">
-            <p className="text-sm font-medium text-gray-800">Tell us about your brand</p>
-            <button onClick={() => setQaMode(false)} className="text-xs text-gray-400 hover:text-gray-600">
-              ✕ Cancel
-            </button>
-          </div>
-          {QA_QUESTIONS.map((q) => (
-            <div key={q.key}>
-              <label className="text-xs font-medium text-gray-600 mb-1 block">{q.label}</label>
-              <textarea
-                value={qaAnswers[q.key] || ""}
-                onChange={(e) => setQaAnswers((prev) => ({ ...prev, [q.key]: e.target.value }))}
-                placeholder={q.placeholder}
-                rows={2}
-                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-rose-300 resize-none"
-              />
-            </div>
-          ))}
-          <button
-            onClick={submitQA}
-            disabled={extracting}
-            className="w-full py-2.5 rounded-xl bg-rose-500 text-white text-sm font-semibold hover:bg-rose-600 disabled:opacity-50 transition-colors"
-          >
-            {extracting ? "Creating brand profile…" : "Create my brand profile"}
-          </button>
-        </div>
-      ) : (
+      {/* Source picker — shown when brand is empty */}
+      {showSourcePicker && (
+        <SourcePicker
+          onQA={() => setQaMode(true)}
+          onFile={handleFileUpload}
+          onUrl={extractFromWebsite}
+          extracting={extracting}
+        />
+      )}
+
+      {/* Q&A mode */}
+      {qaMode && (
+        <QAPanel
+          onSubmit={submitQA}
+          onCancel={() => setQaMode(false)}
+          extracting={extracting}
+        />
+      )}
+
+      {/* Tabbed editor — shown when brand has any data and not in Q&A */}
+      {hasAnyBrand && !qaMode && (
         <>
           {/* Tab nav */}
           <div className="flex border-b border-gray-100">
-            {(["identity", "voice", "visual", "source"] as const).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`flex-1 text-xs font-medium py-2.5 border-b-2 transition-colors capitalize ${
-                  activeTab === tab
-                    ? "border-rose-400 text-rose-600 bg-rose-50/50"
-                    : "border-transparent text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                {tab === "identity" ? "🏷 Identity" : tab === "voice" ? "🗣 Voice" : tab === "visual" ? "🎨 Visual" : "🔗 Source"}
-              </button>
-            ))}
+            {(["identity", "voice", "visual", "logo"] as const).map((tab) => {
+              const labels: Record<SetupTab, string> = {
+                identity: "🏷 Identity",
+                voice: "🗣 Voice",
+                visual: "🎨 Visual",
+                logo: "🖼 Logo",
+              };
+              return (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`flex-1 text-xs font-medium py-2.5 border-b-2 transition-colors ${
+                    activeTab === tab
+                      ? "border-rose-400 text-rose-600 bg-rose-50/40"
+                      : "border-transparent text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  {labels[tab]}
+                </button>
+              );
+            })}
           </div>
 
           <div className="p-5">
-            {/* Identity Tab */}
+            {/* ── Identity tab ── */}
             {activeTab === "identity" && (
               <div className="space-y-4">
-                <Field label="Brand Name" value={brand.brand_name} onSave={(v) => save({ brand_name: v })} placeholder="Global Threads" />
-                <Field label="Tagline" value={brand.tagline} onSave={(v) => save({ tagline: v })} placeholder="Crafted for a Global Audience." />
-                <Field label="Product Category" value={brand.product_category} onSave={(v) => save({ product_category: v })} placeholder="Artisanal Home Decor and Fashion Accessories" />
-                <Field label="Target Audience" value={brand.target_audience} onSave={(v) => save({ target_audience: v })} placeholder="Culturally conscious, design-oriented individuals…" textarea />
-                <Field label="Brand Overview" value={brand.overview} onSave={(v) => save({ overview: v })} placeholder="A lifestyle brand focused on ethical sourcing…" textarea />
+                <TextField
+                  label="Brand Name"
+                  value={identityDraft.brand_name}
+                  onChange={(v) => setIdentityDraft((d) => ({ ...d, brand_name: v }))}
+                  placeholder="e.g. Global Threads"
+                />
+                <TextField
+                  label="Tagline"
+                  value={identityDraft.tagline}
+                  onChange={(v) => setIdentityDraft((d) => ({ ...d, tagline: v }))}
+                  placeholder="e.g. Crafted for a Global Audience"
+                />
+                <TextField
+                  label="Product Category"
+                  value={identityDraft.product_category}
+                  onChange={(v) => setIdentityDraft((d) => ({ ...d, product_category: v }))}
+                  placeholder="e.g. Artisanal Home Decor"
+                />
+                <TextField
+                  label="Target Audience"
+                  value={identityDraft.target_audience}
+                  onChange={(v) => setIdentityDraft((d) => ({ ...d, target_audience: v }))}
+                  placeholder="e.g. Design-conscious shoppers who value handmade goods"
+                  textarea
+                />
+                <TextField
+                  label="Brand Overview"
+                  value={identityDraft.overview}
+                  onChange={(v) => setIdentityDraft((d) => ({ ...d, overview: v }))}
+                  placeholder="e.g. A lifestyle brand focused on ethical sourcing and global craftsmanship"
+                  textarea
+                />
+                <SaveButton saving={saving} saved={saved} onClick={() => saveTab(identityDraft)} />
               </div>
             )}
 
-            {/* Voice Tab */}
+            {/* ── Voice tab ── */}
             {activeTab === "voice" && (
               <div className="space-y-4">
                 <div>
-                  <label className="text-xs font-medium text-gray-600 mb-2 block">Tone Adjectives</label>
+                  <label className="text-xs font-medium text-gray-600 mb-2 block">Tone</label>
                   <div className="flex flex-wrap gap-1.5 mb-2">
                     {TONE_OPTIONS.map((t) => (
                       <button
@@ -354,124 +638,152 @@ export function BrandSetupCard() {
                     <button onClick={addCustomTone} className="text-xs px-3 py-1.5 rounded-lg bg-rose-100 text-rose-600 hover:bg-rose-200 font-medium">Add</button>
                   </div>
                 </div>
-                <Field label="Writing Style" value={brand.writing_style} onSave={(v) => save({ writing_style: v })} placeholder="Descriptive, evocative, polished medium-length prose…" textarea />
-                <button
-                  onClick={() => save({})}
-                  disabled={saving}
-                  className="w-full py-2 rounded-xl bg-rose-500 text-white text-sm font-semibold hover:bg-rose-600 disabled:opacity-50 transition-colors"
-                >
-                  {saving ? "Saving…" : saved ? "✓ Saved!" : "Save Voice"}
-                </button>
+                <TextField
+                  label="Writing Style"
+                  value={voiceDraft.writing_style}
+                  onChange={(v) => setVoiceDraft((d) => ({ ...d, writing_style: v }))}
+                  placeholder="e.g. Descriptive, evocative, polished prose. Tactile and story-driven."
+                  textarea
+                />
+                <SaveButton saving={saving} saved={saved} onClick={() => saveTab({ ...voiceDraft })} />
               </div>
             )}
 
-            {/* Visual Tab */}
+            {/* ── Visual tab ── */}
             {activeTab === "visual" && (
               <div className="space-y-4">
-                {/* Colors */}
                 <div>
                   <label className="text-xs font-medium text-gray-600 mb-2 block">Brand Colors</label>
                   <div className="grid grid-cols-2 gap-3">
-                    <ColorField
-                      label="Primary"
-                      value={brand.primary_color}
-                      onChange={(v) => setBrand((b) => ({ ...b, primary_color: v }))}
-                    />
-                    <ColorField
-                      label="Primary Inverse"
-                      value={brand.primary_color_inverse}
-                      onChange={(v) => setBrand((b) => ({ ...b, primary_color_inverse: v }))}
-                    />
-                    <ColorField
-                      label="Secondary"
-                      value={brand.secondary_color}
-                      onChange={(v) => setBrand((b) => ({ ...b, secondary_color: v }))}
-                    />
-                    <ColorField
-                      label="Secondary Inverse"
-                      value={brand.secondary_color_inverse}
-                      onChange={(v) => setBrand((b) => ({ ...b, secondary_color_inverse: v }))}
-                    />
+                    <ColorField label="Primary" value={visualDraft.primary_color} onChange={(v) => setVisualDraft((d) => ({ ...d, primary_color: v }))} />
+                    <ColorField label="Primary Inverse" value={visualDraft.primary_color_inverse} onChange={(v) => setVisualDraft((d) => ({ ...d, primary_color_inverse: v }))} />
+                    <ColorField label="Secondary" value={visualDraft.secondary_color} onChange={(v) => setVisualDraft((d) => ({ ...d, secondary_color: v }))} />
+                    <ColorField label="Secondary Inverse" value={visualDraft.secondary_color_inverse} onChange={(v) => setVisualDraft((d) => ({ ...d, secondary_color_inverse: v }))} />
                   </div>
                 </div>
 
-                {/* Font */}
                 <div>
                   <label className="text-xs font-medium text-gray-600 mb-1 block">Font Family (Google Fonts)</label>
                   <select
-                    value={brand.font_family || ""}
-                    onChange={(e) => setBrand((b) => ({ ...b, font_family: e.target.value }))}
+                    value={visualDraft.font_family || ""}
+                    onChange={(e) => setVisualDraft((d) => ({ ...d, font_family: e.target.value }))}
                     className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-rose-300 bg-white"
                   >
-                    <option value="">Select a Google Font…</option>
-                    {GOOGLE_FONTS.map((f) => (
-                      <option key={f} value={f}>{f}</option>
-                    ))}
+                    <option value="">Select a font…</option>
+                    {GOOGLE_FONTS.map((f) => <option key={f} value={f}>{f}</option>)}
                   </select>
                 </div>
 
-                {/* Font weights */}
                 <div>
                   <label className="text-xs font-medium text-gray-600 mb-1.5 block">Font Weights</label>
                   <div className="flex flex-wrap gap-2">
-                    {[300, 400, 500, 600, 700, 800].map((w) => (
+                    {[300, 400, 500, 600, 700, 800].map((w) => {
+                      const active = (visualDraft.font_weights || brand.font_weights || [400, 700]).includes(w);
+                      return (
+                        <button
+                          key={w}
+                          onClick={() => {
+                            const current = visualDraft.font_weights || brand.font_weights || [400, 700];
+                            setVisualDraft((d) => ({
+                              ...d,
+                              font_weights: active ? current.filter((x) => x !== w) : [...current, w],
+                            }));
+                          }}
+                          className={`text-xs px-3 py-1 rounded-full border font-medium transition-colors ${
+                            active ? "bg-rose-500 border-rose-500 text-white" : "bg-white border-gray-200 text-gray-600 hover:border-rose-200"
+                          }`}
+                          style={{ fontWeight: w }}
+                        >
+                          {w}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <TextField label="Background Style" value={visualDraft.background_style} onChange={(v) => setVisualDraft((d) => ({ ...d, background_style: v }))} placeholder="e.g. Clean minimalist white space with soft off-white sections" textarea />
+                <TextField label="Imagery Style" value={visualDraft.imagery_style} onChange={(v) => setVisualDraft((d) => ({ ...d, imagery_style: v }))} placeholder="e.g. Warm lifestyle photography with natural textures" textarea />
+                <TextField label="Typography Vibe" value={visualDraft.typography_vibe} onChange={(v) => setVisualDraft((d) => ({ ...d, typography_vibe: v }))} placeholder="e.g. High-contrast serifs for titles, modern sans-serifs for body" textarea />
+
+                <SaveButton saving={saving} saved={saved} onClick={() => saveTab(visualDraft)} />
+              </div>
+            )}
+
+            {/* ── Logo tab ── */}
+            {activeTab === "logo" && (
+              <div className="space-y-5">
+                {/* Current logo preview */}
+                {brand.logo_url && (
+                  <div className="flex items-center gap-4 p-4 rounded-xl bg-gray-50 border border-gray-100">
+                    <img src={brand.logo_url} alt="Logo" className="w-20 h-20 object-contain rounded-lg bg-white border border-gray-200 p-1" />
+                    <div>
+                      <p className="text-sm font-medium text-gray-800">Current logo</p>
+                      <p className="text-xs text-gray-400 mt-0.5">Upload a new one to replace it</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Upload */}
+                <div>
+                  <label className="text-xs font-medium text-gray-600 mb-2 block">Upload Logo</label>
+                  <label className="flex items-center justify-center gap-3 p-5 rounded-xl border-2 border-dashed border-rose-200 hover:border-rose-400 cursor-pointer transition-colors group bg-rose-50/30 hover:bg-rose-50">
+                    <span className="text-2xl">📎</span>
+                    <div className="text-center">
+                      <span className="text-sm font-medium text-rose-600 group-hover:text-rose-700">Choose a file</span>
+                      <p className="text-xs text-gray-400 mt-0.5">PNG, JPG, SVG, WebP — recommended 500×500 px</p>
+                    </div>
+                    <input type="file" className="hidden" accept=".png,.jpg,.jpeg,.svg,.webp" onChange={uploadLogo} />
+                  </label>
+                </div>
+
+                {/* Generate */}
+                <div className="rounded-xl border border-purple-100 bg-purple-50/50 p-4">
+                  <p className="text-sm font-semibold text-purple-900 mb-1">Generate a logo with AI</p>
+                  <p className="text-xs text-purple-600 mb-3">
+                    We'll use your brand name, colors, and style to generate a logo concept. Make sure your Identity and Visual tabs are filled in first.
+                  </p>
+                  <div className="flex items-center gap-2 text-xs text-purple-500 mb-3">
+                    <span className={`w-2 h-2 rounded-full ${brand.brand_name ? "bg-green-400" : "bg-gray-300"}`} />
+                    Brand name {brand.brand_name ? `"${brand.brand_name}"` : "(not set)"}
+                    <span className={`w-2 h-2 rounded-full ml-2 ${brand.primary_color ? "bg-green-400" : "bg-gray-300"}`} />
+                    Primary color {brand.primary_color || "(not set)"}
+                  </div>
+                  <button
+                    onClick={generateLogo}
+                    disabled={generatingLogo || !brand.brand_name}
+                    className="w-full py-2.5 rounded-xl bg-purple-600 text-white text-sm font-semibold hover:bg-purple-700 disabled:opacity-40 transition-colors"
+                  >
+                    {generatingLogo ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                        Generating…
+                      </span>
+                    ) : "✨ Generate Logo"}
+                  </button>
+                  {!brand.brand_name && (
+                    <p className="text-xs text-purple-400 mt-2 text-center">Set your brand name in the Identity tab first</p>
+                  )}
+                </div>
+
+                {/* Ratio */}
+                <div>
+                  <label className="text-xs font-medium text-gray-600 mb-2 block">Logo Ratio</label>
+                  <div className="flex gap-2">
+                    {["1:1", "16:9", "4:1"].map((r) => (
                       <button
-                        key={w}
-                        onClick={() => {
-                          const current = brand.font_weights || [400, 700];
-                          setBrand((b) => ({
-                            ...b,
-                            font_weights: current.includes(w) ? current.filter((x) => x !== w) : [...current, w],
-                          }));
-                        }}
-                        className={`text-xs px-3 py-1 rounded-full border font-medium transition-colors ${
-                          (brand.font_weights || [400, 700]).includes(w)
-                            ? "bg-rose-500 border-rose-500 text-white"
-                            : "bg-white border-gray-200 text-gray-600 hover:border-rose-200"
+                        key={r}
+                        onClick={() => saveTab({ logo_ratio: r })}
+                        className={`flex-1 py-2 rounded-lg border text-xs font-medium transition-colors ${
+                          brand.logo_ratio === r
+                            ? "border-rose-400 bg-rose-50 text-rose-600"
+                            : "border-gray-200 text-gray-600 hover:border-rose-200"
                         }`}
-                        style={{ fontWeight: w }}
                       >
-                        {w}
+                        {r}
                       </button>
                     ))}
                   </div>
                 </div>
-
-                <Field label="Logo Ratio" value={brand.logo_ratio} onSave={(v) => save({ logo_ratio: v })} placeholder="1:1" />
-                <Field label="Background Style" value={brand.background_style} onSave={(v) => save({ background_style: v })} placeholder="Clean minimalist white space…" textarea />
-                <Field label="Imagery Style" value={brand.imagery_style} onSave={(v) => save({ imagery_style: v })} placeholder="Warm, high-end lifestyle photography…" textarea />
-                <Field label="Typography Vibe" value={brand.typography_vibe} onSave={(v) => save({ typography_vibe: v })} placeholder="Sophisticated editorial style…" textarea />
-
-                <button
-                  onClick={() => save({
-                    primary_color: brand.primary_color,
-                    primary_color_inverse: brand.primary_color_inverse,
-                    secondary_color: brand.secondary_color,
-                    secondary_color_inverse: brand.secondary_color_inverse,
-                    font_family: brand.font_family,
-                    font_weights: brand.font_weights,
-                  })}
-                  disabled={saving}
-                  className="w-full py-2 rounded-xl bg-rose-500 text-white text-sm font-semibold hover:bg-rose-600 disabled:opacity-50 transition-colors"
-                >
-                  {saving ? "Saving…" : saved ? "✓ Saved!" : "Save Visual Identity"}
-                </button>
-              </div>
-            )}
-
-            {/* Source Tab */}
-            {activeTab === "source" && (
-              <div className="space-y-3">
-                <div className="rounded-xl bg-gray-50 p-4 text-sm">
-                  <div className="font-medium text-gray-700 mb-1">Current source</div>
-                  <div className="text-gray-500 capitalize">{brand.source || "Not set"}</div>
-                  {brand.source_url && (
-                    <div className="text-xs text-rose-500 mt-1 truncate">{brand.source_url}</div>
-                  )}
-                </div>
-                <p className="text-xs text-gray-500">
-                  You can re-extract brand info at any time by uploading a new file, pasting a URL, or answering questions again using the buttons at the top.
-                </p>
               </div>
             )}
           </div>
@@ -481,59 +793,44 @@ export function BrandSetupCard() {
   );
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
-function Field({
-  label, value, onSave, placeholder, textarea,
+function SaveButton({ saving, saved, onClick }: { saving: boolean; saved: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={saving}
+      className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-colors ${
+        saved
+          ? "bg-green-500 text-white"
+          : "bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-50"
+      }`}
+    >
+      {saving ? "Saving…" : saved ? "✓ Saved!" : "Save"}
+    </button>
+  );
+}
+
+function TextField({
+  label, value, onChange, placeholder, textarea,
 }: {
   label: string;
   value?: string | null;
-  onSave: (v: string) => void;
+  onChange: (v: string) => void;
   placeholder?: string;
   textarea?: boolean;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(value || "");
-
-  useEffect(() => setDraft(value || ""), [value]);
-
   const Tag = textarea ? "textarea" : "input";
   return (
     <div>
       <label className="text-xs font-medium text-gray-600 mb-1 block">{label}</label>
-      {editing ? (
-        <div className="flex gap-2">
-          <Tag
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder={placeholder}
-            rows={textarea ? 3 : undefined}
-            className="flex-1 text-sm border border-rose-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-rose-400 resize-none"
-            autoFocus
-          />
-          <div className="flex flex-col gap-1">
-            <button
-              onClick={() => { onSave(draft); setEditing(false); }}
-              className="text-xs px-2.5 py-1 rounded-lg bg-rose-500 text-white hover:bg-rose-600 font-medium"
-            >Save</button>
-            <button
-              onClick={() => { setDraft(value || ""); setEditing(false); }}
-              className="text-xs px-2.5 py-1 rounded-lg bg-gray-100 text-gray-500 hover:bg-gray-200"
-            >✕</button>
-          </div>
-        </div>
-      ) : (
-        <button
-          onClick={() => setEditing(true)}
-          className="w-full text-left text-sm px-3 py-2 rounded-lg bg-gray-50 border border-gray-100 text-gray-700 hover:border-rose-200 hover:bg-rose-50/30 transition-colors min-h-[2.25rem]"
-        >
-          {value ? (
-            <span>{value}</span>
-          ) : (
-            <span className="text-gray-400 italic">{placeholder || `Set ${label.toLowerCase()}…`}</span>
-          )}
-        </button>
-      )}
+      <Tag
+        value={value || ""}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        rows={textarea ? 3 : undefined}
+        className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-rose-300 resize-none bg-gray-50 focus:bg-white transition-colors"
+      />
     </div>
   );
 }
@@ -547,15 +844,13 @@ function ColorField({
 }) {
   return (
     <div className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2">
-      <div
-        className="w-6 h-6 rounded-full border border-gray-200 flex-shrink-0 cursor-pointer"
-        style={{ backgroundColor: value || "#e5e7eb" }}
-      >
+      <div className="w-6 h-6 rounded-full border border-gray-200 flex-shrink-0 cursor-pointer overflow-hidden relative">
+        <div className="absolute inset-0" style={{ backgroundColor: value || "#e5e7eb" }} />
         <input
           type="color"
           value={value || "#000000"}
           onChange={(e) => onChange(e.target.value)}
-          className="opacity-0 w-6 h-6 cursor-pointer"
+          className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
         />
       </div>
       <div className="flex-1 min-w-0">
