@@ -16,14 +16,17 @@ router = APIRouter(tags=["agent-history"])
 @router.get("/agents/{role}/history")
 async def get_agent_history_by_role(
     role: str,
-    limit: int = Query(200, ge=1, le=500),
+    limit: int = Query(30, ge=1, le=200),
+    before: Optional[str] = Query(None, description="Load messages older than this message ID"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """
     Return message history for the current user's session for a given agent role.
-    Matches the shape the AgentShell frontend expects:
-      { session_id, role, messages: [{id, role, content, created_at}] }
+    Returns the most recent {limit} messages by default (newest-first fetch, reversed for display).
+    Use before=<message_id> to paginate backwards (load older messages).
+
+    Shape: { session_id, role, messages: [{id, role, content, created_at}], has_more }
     """
     import re as _re
 
@@ -35,18 +38,36 @@ async def get_agent_history_by_role(
     )
     session = session_result.scalar_one_or_none()
     if not session:
-        return {"session_id": None, "role": role, "messages": []}
+        return {"session_id": None, "role": role, "messages": [], "has_more": False}
 
+    base_filter = [
+        AgentMessage.session_id == session.id,
+        AgentMessage.role.in_(["user", "assistant", "card"]),
+    ]
+
+    # Cursor pagination: if before is provided, only fetch messages older than that one
+    if before:
+        try:
+            before_uuid = UUID(before)
+            ts_result = await db.execute(
+                select(AgentMessage.created_at).where(AgentMessage.id == before_uuid)
+            )
+            before_ts = ts_result.scalar_one_or_none()
+            if before_ts:
+                base_filter.append(AgentMessage.created_at < before_ts)
+        except Exception:
+            pass
+
+    # Fetch newest-first so LIMIT cuts the right end, then reverse for chronological order
     msgs_result = await db.execute(
         select(AgentMessage)
-        .where(
-            AgentMessage.session_id == session.id,
-            AgentMessage.role.in_(["user", "assistant", "card"]),
-        )
-        .order_by(AgentMessage.created_at.asc())
-        .limit(limit)
+        .where(*base_filter)
+        .order_by(AgentMessage.created_at.desc())
+        .limit(limit + 1)  # fetch one extra to detect has_more
     )
-    messages = msgs_result.scalars().all()
+    rows = msgs_result.scalars().all()
+    has_more = len(rows) > limit
+    messages = list(reversed(rows[:limit]))
 
     _base64 = _re.compile(r'data:[^;]+;base64,[A-Za-z0-9+/=]{100,}', _re.DOTALL)
     items = [
@@ -59,7 +80,12 @@ async def get_agent_history_by_role(
         for m in messages
     ]
 
-    return {"session_id": str(session.id), "role": role, "messages": items}
+    return {
+        "session_id": str(session.id),
+        "role": role,
+        "messages": items,
+        "has_more": has_more,
+    }
 
 
 @router.get("/agent/sessions/{session_id}/messages")

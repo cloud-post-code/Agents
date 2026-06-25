@@ -228,6 +228,9 @@ export function AgentShell({ agent }: AgentShellProps) {
   const { token } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [oldestId, setOldestId] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -236,43 +239,88 @@ export function AgentShell({ agent }: AgentShellProps) {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const pendingRef = useRef<string>("");
   const tokenRef = useRef<string | null>(null);
   const roleRef = useRef<string>(agent.role);
+  // Track whether we should auto-scroll (true for new messages, false after loading older ones)
+  const shouldScrollRef = useRef(true);
 
   tokenRef.current = token;
   roleRef.current = agent.role;
 
-  // Load full chat history on mount
+  function parseHistoryMessages(raw: HistoryMessage[]): Message[] {
+    return raw
+      .filter((m) => m.role === "user" || m.role === "assistant" || m.role === "card")
+      .reduce<Message[]>((acc, m) => {
+        if (m.role === "card") {
+          try {
+            const card = JSON.parse(m.content) as { type: string; payload: Record<string, unknown> };
+            acc.push({ id: m.id, role: card.type as MessageKind, content: "", payload: card.payload, created_at: m.created_at });
+          } catch {
+            // skip malformed card rows
+          }
+        } else {
+          acc.push({ id: m.id, role: m.role as MessageKind, content: m.content, created_at: m.created_at });
+        }
+        return acc;
+      }, []);
+  }
+
+  // Initial load — 30 most recent messages
   useEffect(() => {
     if (!token) return;
-    apiFetch<{ session_id: string; role: string; messages: HistoryMessage[] }>(
-      `/api/v1/agents/${agent.role}/history?limit=200`,
+    apiFetch<{ session_id: string; role: string; messages: HistoryMessage[]; has_more: boolean }>(
+      `/api/v1/agents/${agent.role}/history?limit=30`,
       token
     )
       .then((data) => {
-        const loaded: Message[] = data.messages
-          .filter((m) => m.role === "user" || m.role === "assistant" || m.role === "card")
-          .reduce<Message[]>((acc, m) => {
-            if (m.role === "card") {
-              try {
-                const card = JSON.parse(m.content) as { type: string; payload: Record<string, unknown> };
-                acc.push({ id: m.id, role: card.type as MessageKind, content: "", payload: card.payload, created_at: m.created_at });
-              } catch {
-                // skip malformed card rows
-              }
-            } else {
-              acc.push({ id: m.id, role: m.role as MessageKind, content: m.content, created_at: m.created_at });
-            }
-            return acc;
-          }, []);
+        const loaded = parseHistoryMessages(data.messages);
         setMessages(loaded);
+        setHasMore(data.has_more ?? false);
+        setOldestId(loaded[0]?.id ?? null);
         setHistoryLoaded(true);
       })
-      .catch(() => setHistoryLoaded(true)); // fail open — show empty thread
+      .catch(() => setHistoryLoaded(true));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, agent.role]);
+
+  // Load older messages when user clicks "Load earlier"
+  const loadMoreMessages = async () => {
+    if (!token || !oldestId || loadingMore) return;
+    setLoadingMore(true);
+
+    // Remember scroll height before prepending so we can restore position
+    const scrollArea = scrollAreaRef.current;
+    const prevScrollHeight = scrollArea?.scrollHeight ?? 0;
+
+    try {
+      const data = await apiFetch<{ session_id: string; role: string; messages: HistoryMessage[]; has_more: boolean }>(
+        `/api/v1/agents/${agent.role}/history?limit=30&before=${oldestId}`,
+        token
+      );
+      const older = parseHistoryMessages(data.messages);
+      if (older.length === 0) { setHasMore(false); return; }
+
+      shouldScrollRef.current = false;
+      setMessages((prev) => [...older, ...prev]);
+      setHasMore(data.has_more ?? false);
+      setOldestId(older[0]?.id ?? oldestId);
+
+      // After React renders the prepended messages, restore scroll position
+      requestAnimationFrame(() => {
+        if (scrollArea) {
+          scrollArea.scrollTop = scrollArea.scrollHeight - prevScrollHeight;
+        }
+        shouldScrollRef.current = true;
+      });
+    } catch {
+      // silently ignore
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   // Connect WebSocket after history is loaded
   useEffect(() => {
@@ -358,9 +406,11 @@ export function AgentShell({ agent }: AgentShellProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [historyLoaded, !!token]);
 
-  // Scroll to bottom when new messages arrive
+  // Scroll to bottom only for new incoming messages, not when prepending older ones
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (shouldScrollRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages]);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -566,7 +616,7 @@ export function AgentShell({ agent }: AgentShellProps) {
         </span>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
+      <div ref={scrollAreaRef} className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
         {!historyLoaded && (
           <div className="flex items-center justify-center h-full">
             <span className="text-sm text-gray-400 animate-pulse">Loading conversation...</span>
@@ -575,6 +625,24 @@ export function AgentShell({ agent }: AgentShellProps) {
 
         {historyLoaded && messages.length === 0 && (
           <AgentWelcome agent={agent} agentColor={agentColor} onExample={setInput} />
+        )}
+
+        {/* Load earlier messages button — only shown when there's history above */}
+        {historyLoaded && hasMore && messages.length > 0 && (
+          <div className="flex justify-center pt-1 pb-2">
+            <button
+              onClick={loadMoreMessages}
+              disabled={loadingMore}
+              className="text-xs px-4 py-1.5 rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-800 hover:border-gray-300 disabled:opacity-50 transition-colors shadow-sm"
+            >
+              {loadingMore ? (
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+                  Loading…
+                </span>
+              ) : "↑ Load earlier messages"}
+            </button>
+          </div>
         )}
 
         {historyLoaded && renderMessages()}
