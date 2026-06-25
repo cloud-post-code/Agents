@@ -4,7 +4,7 @@ from __future__ import annotations
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -442,6 +442,71 @@ async def add_product_image(
     await db.commit()
     await db.refresh(img)
     return _image_dict(img)
+
+
+class SaveImageRequest(BaseModel):
+    image_url: str
+
+
+@router.patch("/{product_id}/image", status_code=200)
+async def save_product_image(
+    product_id: uuid.UUID,
+    body: SaveImageRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Save a product image from a data URI or URL.
+    Accepts: {"image_url": "data:image/jpeg;base64,..." or "https://..."}
+    Stores data URIs in image_data (no size limit), HTTP URLs in image_url.
+    """
+    product = await db.scalar(
+        select(Product).where(
+            Product.id == product_id,
+            Product.tenant_id == current_user.tenant_id,
+            Product.deleted_at.is_(None),
+        )
+    )
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    img_url_col, img_data_col = _resolve_image(body.image_url)
+    product.image_url = img_url_col
+    product.image_data = img_data_col
+    await db.commit()
+    await db.refresh(product)
+    image_out = product.image_url
+    if not image_out and product.image_data:
+        image_out = f"data:image/jpeg;base64,{product.image_data}"
+    return {"status": "ok", "product_id": str(product.id), "image_url": image_out}
+
+
+@router.post("/{product_id}/image-upload", status_code=200)
+async def upload_product_image(
+    product_id: uuid.UUID,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Accept a multipart binary image and store as base64 in product.image_data."""
+    import base64 as _b64
+
+    product = await db.scalar(
+        select(Product).where(
+            Product.id == product_id,
+            Product.tenant_id == current_user.tenant_id,
+            Product.deleted_at.is_(None),
+        )
+    )
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    contents = await file.read()
+    product.image_data = _b64.b64encode(contents).decode()
+    product.image_url = None
+    await db.commit()
+    await db.refresh(product)
+    return {"status": "ok", "product_id": str(product.id)}
 
 
 async def _check_low_stock(db: AsyncSession, product: Product, tenant_id: uuid.UUID):

@@ -85,18 +85,49 @@ export function ConfirmProductCard(props: ConfirmProductCardProps) {
     setSaving(true);
     setError(null);
     try {
+      // Step 1: create product WITHOUT image in JSON body (avoids large-body rejection)
       const body: Record<string, unknown> = {
         name: name || "Unnamed Product",
         description: description || undefined,
         price: parseFloat(price),
         stock_qty: parseInt(quantity, 10),
         ...(sku ? { sku } : {}),
-        ...(activeImageUrl ? { image_url: activeImageUrl } : {}),
       };
-      await apiFetch("/api/v1/products", token, {
+      const created = await apiFetch<{ id: string }>("/api/v1/products", token, {
         method: "POST",
         body: JSON.stringify(body),
       });
+
+      // Step 2: save image separately as multipart to avoid large JSON body
+      if (activeImageUrl && created?.id) {
+        try {
+          const apiBase = getApiBase();
+          let blob: Blob;
+          if (activeImageUrl.startsWith("data:")) {
+            // Convert data URI → binary blob
+            const [header, b64] = activeImageUrl.split(",", 2);
+            const mime = header.replace("data:", "").replace(";base64", "");
+            const binary = atob(b64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            blob = new Blob([bytes], { type: mime });
+          } else {
+            // HTTP URL — fetch it then upload as blob
+            const r = await fetch(activeImageUrl);
+            blob = await r.blob();
+          }
+          const form = new FormData();
+          form.append("file", blob, "product-image.jpg");
+          await fetch(`${apiBase}/api/v1/products/${created.id}/image-upload`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+            body: form,
+          });
+        } catch {
+          // image save failed — product still saved, don't block
+        }
+      }
+
       setSaved(true);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Save failed");
