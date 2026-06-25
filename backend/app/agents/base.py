@@ -195,21 +195,67 @@ class ArtisanAgent:
         if tool_name == "search_catalog" and db is not None and tenant_id:
             from app.services.product_tools import search_catalog_impl
             try:
+                query_str = args.get("query", "")
                 result = await search_catalog_impl(
                     db=db,
                     tenant_id=uuid.UUID(tenant_id),
-                    query=args.get("query", ""),
+                    query=query_str,
                     limit=args.get("limit", 10),
                 )
-                # Always include a product_list surface hint so the agent
-                # can pass it directly to render_ui without reformatting
                 products = result.get("results", result) if isinstance(result, dict) else result
                 result_dict = result if isinstance(result, dict) else {"results": result, "count": len(result)}
+                count = result_dict.get("count", len(products))
+
+                # Check for exact name match (case-insensitive)
+                exact_match = None
+                if query_str and products:
+                    q_lower = query_str.strip().lower()
+                    exact_match = next(
+                        (p for p in products if (p.get("name") or "").lower() == q_lower),
+                        None
+                    )
+
+                # When there is no single exact match and multiple results exist,
+                # include a product_picker surface so the agent can ask the user
+                # to clarify instead of guessing.
+                if not exact_match and count > 1:
+                    result_dict["_product_picker_surface"] = {
+                        "surface": "product_picker",
+                        "props": {
+                            "query": query_str,
+                            "results": [
+                                {
+                                    "id": p.get("id"),
+                                    "name": p.get("name"),
+                                    "sku": p.get("sku"),
+                                    "price": p.get("price"),
+                                    "stock_qty": p.get("stock_qty"),
+                                    "image_url": p.get("image_url"),
+                                    "description": p.get("description"),
+                                }
+                                for p in products[:5]
+                            ],
+                        },
+                    }
+                    result_dict["_needs_clarification"] = True
+                    result_dict["_instruction"] = (
+                        "Multiple products match. "
+                        "Call render_ui with the _product_picker_surface props so the user can pick the right one. "
+                        "Do NOT guess or proceed with any product until the user selects one."
+                    )
+                elif exact_match:
+                    result_dict["_exact_match"] = exact_match
+                    result_dict["_instruction"] = (
+                        f"Exact match found: '{exact_match.get('name')}' (id={exact_match.get('id')}). "
+                        "Use this product_id directly."
+                    )
+
+                # Always include product_list surface as fallback
                 result_dict["_product_list_surface"] = {
                     "surface": "product_list",
                     "props": {
                         "products": products,
-                        "total": result_dict.get("count", len(products)),
+                        "total": count,
                         "page": 1,
                         "per_page": 10,
                     }
@@ -422,10 +468,13 @@ class ArtisanAgent:
                         creative_brief=args.get("creative_brief", ""),
                         brand=brand,
                     )
+                    product_image = product.image_url
+                    if not product_image and product.image_data:
+                        product_image = f"data:image/jpeg;base64,{product.image_data}"
                     return {
                         "product_id": args.get("product_id"),
                         "product_name": product.name,
-                        "product_image_url": product.image_url,
+                        "product_image_url": product_image,
                         "platform": args.get("platform", "instagram"),
                         "post_type": args.get("post_type", "feed_post"),
                         "caption": caption,
@@ -450,10 +499,13 @@ class ArtisanAgent:
                         return {"platform": p, "platform_label": PLATFORM_LABELS.get(p, p), "caption": cap}
 
                     posts = await asyncio.gather(*[_gen(p) for p in platforms])
+                    product_image = product.image_url
+                    if not product_image and product.image_data:
+                        product_image = f"data:image/jpeg;base64,{product.image_data}"
                     return {
                         "product_id": args.get("product_id"),
                         "product_name": product.name,
-                        "product_image_url": product.image_url,
+                        "product_image_url": product_image,
                         "posts": list(posts),
                     }
 

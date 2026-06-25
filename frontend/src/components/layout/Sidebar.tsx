@@ -26,8 +26,6 @@ const WORKSPACE_ITEMS = [
   { href: "/calendar",      label: "Calendar",      icon: "◻" },
   { href: "/reports",       label: "Reports",       icon: "▤" },
   { href: "/notifications", label: "Notifications", icon: "🔔" },
-  { href: "/brand",         label: "Brand DNA",     icon: "🎨" },
-  { href: "/marketing",     label: "Marketing",     icon: "📣" },
 ];
 
 export function Sidebar() {

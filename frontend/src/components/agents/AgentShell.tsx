@@ -19,6 +19,8 @@ import { BulkListingCard } from "@/components/a2ui/surfaces/BulkListingCard";
 import { BrandSetupCard } from "@/components/a2ui/surfaces/BrandSetupCard";
 import { SocialPostPreviewCard } from "@/components/a2ui/surfaces/SocialPostPreviewCard";
 import { FlierPreviewCard } from "@/components/a2ui/surfaces/FlierPreviewCard";
+import { ProductPickerCard, ProductPickerItem } from "@/components/a2ui/surfaces/ProductPickerCard";
+import { MarketingStudioCard } from "@/components/a2ui/surfaces/MarketingStudioCard";
 
 type MessageKind = "user" | "assistant" | "task_created" | "a2ui" | "card";
 
@@ -70,7 +72,7 @@ function isImageUrl(value: unknown): value is string {
     value.includes("/uploads/") || value.includes("/images/") || value.includes("railway") && value.includes("http");
 }
 
-function A2UICard({ payload }: { payload: Record<string, unknown> }) {
+function A2UICard({ payload, onProductPicked }: { payload: Record<string, unknown>; onProductPicked?: (product: ProductPickerItem) => void }) {
   const surface = String(payload.surface ?? payload.component ?? "surface");
   // Support both nested props ({surface, props:{...}}) and flat ({surface, image_url, name, ...})
   const rawProps = (payload.props && typeof payload.props === "object")
@@ -95,6 +97,15 @@ function A2UICard({ payload }: { payload: Record<string, unknown> }) {
   if (surface === "brand_setup") return <BrandSetupCard initialTab={(props as { tab?: "identity_voice" | "visual" | "logo" | "setup" }).tab} />;
   if (surface === "social_post_preview") return <SocialPostPreviewCard {...(props as unknown as Parameters<typeof SocialPostPreviewCard>[0])} />;
   if (surface === "flier_preview") return <FlierPreviewCard {...(props as unknown as Parameters<typeof FlierPreviewCard>[0])} />;
+  if (surface === "product_picker") return (
+    <ProductPickerCard
+      {...(props as unknown as Parameters<typeof ProductPickerCard>[0])}
+      onSelect={onProductPicked}
+    />
+  );
+  if (surface === "marketing_studio") return (
+    <MarketingStudioCard {...(props as unknown as Parameters<typeof MarketingStudioCard>[0])} />
+  );
 
   // Generic fallback — render images as <img>, everything else as readable text
   const entries = Object.entries(props).filter(([, v]) => v !== undefined && v !== null);
@@ -398,6 +409,15 @@ export function AgentShell({ agent }: AgentShellProps) {
     }
   };
 
+  const handleProductPicked = (product: ProductPickerItem) => {
+    if (!wsRef.current || wsRef.current.readyState !== 1) return;
+    const msg = `I meant the product: "${product.name}" (ID: ${product.id}). Please continue with this product.`;
+    pendingRef.current = "";
+    setMessages((prev) => [...prev, { role: "user", content: msg, id: crypto.randomUUID() }]);
+    setStreaming(true);
+    wsRef.current.send(JSON.stringify({ type: "message", content: msg }));
+  };
+
   const send = () => {
     const text = input.trim();
     const hasFiles = attachedFiles.length > 0;
@@ -501,7 +521,7 @@ export function AgentShell({ agent }: AgentShellProps) {
               {agent.name[0]}
             </div>
             <div className="max-w-[78%]">
-              <A2UICard payload={msg.payload ?? {}} />
+              <A2UICard payload={msg.payload ?? {}} onProductPicked={handleProductPicked} />
             </div>
           </div>
         );
