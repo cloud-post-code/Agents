@@ -69,8 +69,13 @@ function TaskCreatedCard({ payload }: { payload: Record<string, unknown> }) {
 
 function isImageUrl(value: unknown): value is string {
   if (typeof value !== "string") return false;
-  return /^https?:\/\/.+\.(jpg|jpeg|png|webp|gif|avif|svg)(\?.*)?$/i.test(value) ||
-    value.includes("/uploads/") || value.includes("/images/") || value.includes("railway") && value.includes("http");
+  // Reject placeholder values like [image] or empty strings
+  if (!value || value.startsWith("[") || value.startsWith("data:")) return false;
+  // Must be an actual http(s) URL
+  if (!/^https?:\/\/.+/i.test(value)) return false;
+  return /\.(jpg|jpeg|png|webp|gif|avif|svg)(\?.*)?$/i.test(value) ||
+    value.includes("/uploads/") || value.includes("/images/") ||
+    (value.includes("r2.dev") || value.includes("railway")) && value.includes("http");
 }
 
 function A2UICard({ payload, onProductPicked, onMultiProductPicked, onAction }: { payload: Record<string, unknown>; onProductPicked?: (product: ProductPickerItem) => void; onMultiProductPicked?: (products: ProductPickerItem[]) => void; onAction?: (msg: string) => void }) {
