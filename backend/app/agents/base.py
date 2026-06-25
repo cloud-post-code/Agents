@@ -751,10 +751,35 @@ class ArtisanAgent:
                 return {"error": str(exc)}
 
         if tool_name == "render_ui":
+            surface = args.get("component", args.get("surface", "unknown"))
+            props = args.get("props", {})
+
+            # For product_list, re-fetch products from DB to ensure image_url is always populated.
+            # The LLM often strips large fields (base64, long URLs) when constructing props.
+            if surface == "product_list" and db is not None and tenant_id:
+                try:
+                    from app.services.product_tools import search_catalog_impl
+                    fresh = await search_catalog_impl(
+                        db=db,
+                        tenant_id=uuid.UUID(tenant_id),
+                        query="",
+                        limit=props.get("per_page", 50) or 50,
+                    )
+                    fresh_products = fresh.get("results", fresh) if isinstance(fresh, dict) else fresh
+                    props = {
+                        **props,
+                        "products": fresh_products,
+                        "total": len(fresh_products),
+                        "page": props.get("page", 1),
+                        "per_page": props.get("per_page", 10) or 10,
+                    }
+                except Exception as exc:
+                    logger.warning(f"[render_ui/product_list] image re-fetch failed: {exc}")
+
             return {
-                "surface": args.get("component", args.get("surface", "unknown")),
-                "components": args.get("components", args.get("props", {}).get("components", [])),
-                "props": args.get("props", {}),
+                "surface": surface,
+                "components": args.get("components", props.get("components", [])),
+                "props": props,
             }
 
         # Fall back to the LangChain tool's built-in invoke for other tools
