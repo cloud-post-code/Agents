@@ -88,7 +88,12 @@ async def enhance_product_image(
             if response.data and response.data[0].url:
                 enhanced_urls.append(response.data[0].url)
             elif response.data and response.data[0].b64_json:
-                enhanced_urls.append(f"data:image/png;base64,{response.data[0].b64_json}")
+                import base64 as _b64
+                from app.services.storage import get_storage_service
+                png_bytes = _b64.b64decode(response.data[0].b64_json)
+                storage = get_storage_service()
+                r2_url = await storage.upload_image(png_bytes, "image/png", "images/enhanced")
+                enhanced_urls.append(r2_url)
 
         if not enhanced_urls:
             raise HTTPException(status_code=502, detail="No images returned from OpenAI")

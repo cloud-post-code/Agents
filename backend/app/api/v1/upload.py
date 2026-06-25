@@ -12,6 +12,7 @@ from app.models.agent import AgentMessage, AgentSession
 from app.models.temp_image import TempImage
 from app.models.user import User
 from app.services.ingestion import ProductIngestionService
+from app.services.storage import get_storage_service
 
 router = APIRouter(prefix="/agent/upload", tags=["agent-upload"])
 
@@ -53,7 +54,8 @@ async def _process_single_file(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                 detail=f"Image {file.filename!r} too large. Maximum size: {MAX_IMAGE_SIZE // 1024 // 1024}MB",
             )
-        image_base64 = base64.b64encode(contents).decode()
+        storage = get_storage_service()
+        r2_url = await storage.upload_image(contents, content_type, key_prefix="images/uploads")
         if session_id:
             await _log_to_session(
                 db=db,
@@ -63,7 +65,7 @@ async def _process_single_file(
             )
         return {
             "file_id": file_id,
-            "url": f"data:{content_type};base64,{image_base64}",
+            "url": r2_url,
             "type": "image",
             "filename": file.filename,
             "size": len(contents),
@@ -216,15 +218,13 @@ async def upload_image_for_ingestion(
                 detail=f"Failed to ingest product: {str(e)}"
             )
     
-    # Otherwise, store image and return for agent to process
-    image_base64 = base64.b64encode(contents).decode()
+    # Store image in R2 and return URL for agent to process
+    storage = get_storage_service()
+    r2_url = await storage.upload_image(
+        contents, file.content_type or "image/jpeg", key_prefix="images/temp"
+    )
     file_id = str(uuid.uuid4())
-    
-    # Store in session for agent access
-    # TODO: Store in temporary file storage or database
-    # For now, return base64 for agent to process
-    
-    # Log to agent session
+
     if session_id:
         await _log_to_session(
             db=db,
@@ -232,14 +232,14 @@ async def upload_image_for_ingestion(
             tenant_id=current_user.tenant_id,
             content=f"[Image uploaded: {file.filename}, size: {len(contents)} bytes]",
         )
-    
+
     return {
         "status": "uploaded",
         "file_id": file_id,
         "filename": file.filename,
         "size": len(contents),
         "content_type": file.content_type,
-        "image_base64": image_base64,  # For immediate agent processing
+        "image_url": r2_url,
         "message": "Image uploaded. Provide price, quantity, and unique_id to ingest.",
     }
 
@@ -351,11 +351,13 @@ async def store_temp_image(
         )
 
     content_type = file.content_type or "image/jpeg"
-    b64 = base64.b64encode(contents).decode()
+    storage = get_storage_service()
+    r2_url = await storage.upload_image(contents, content_type, key_prefix="images/temp")
 
     record = TempImage(
         tenant_id=current_user.tenant_id,
-        image_data=b64,
+        image_url=r2_url,
+        image_data=None,
         content_type=content_type,
     )
     db.add(record)
@@ -364,7 +366,7 @@ async def store_temp_image(
 
     return {
         "image_id": str(record.id),
-        "data_url": f"data:{content_type};base64,{b64}",
+        "data_url": r2_url,
     }
 
 
@@ -384,9 +386,12 @@ async def get_temp_image(
     if record is None:
         raise HTTPException(status_code=404, detail="Temp image not found")
 
+    data_url = record.image_url or (
+        f"data:{record.content_type};base64,{record.image_data}" if record.image_data else None
+    )
     return {
         "image_id": str(record.id),
-        "data_url": f"data:{record.content_type};base64,{record.image_data}",
+        "data_url": data_url,
     }
 
 

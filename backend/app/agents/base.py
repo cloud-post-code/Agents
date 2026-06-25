@@ -346,17 +346,26 @@ class ArtisanAgent:
                     }
 
                 # --- Save step ---
+                import base64 as _b64
                 from app.models.product import Product
+                from app.services.storage import get_storage_service
 
-                # Store image correctly: data URIs → image_data col, HTTP URLs → image_url col
+                # If image_url is a data: URI, decode and upload to R2 first.
+                # GPT-4o also can't fetch data: URIs, so this fixes vision extraction too.
                 prod_image_url = None
-                prod_image_data = None
                 if image_url:
                     if image_url.startswith("data:"):
                         try:
-                            prod_image_data = image_url.split(",", 1)[1]
-                        except IndexError:
-                            prod_image_data = image_url
+                            header, b64_data = image_url.split(",", 1)
+                            content_type = header.split(";")[0].replace("data:", "") or "image/jpeg"
+                        except (ValueError, IndexError):
+                            b64_data = image_url
+                            content_type = "image/jpeg"
+                        image_bytes = _b64.b64decode(b64_data)
+                        storage = get_storage_service()
+                        prod_image_url = await storage.upload_image(
+                            image_bytes, content_type, "images/products"
+                        )
                     elif image_url.startswith("http"):
                         prod_image_url = image_url[:1024]
 
@@ -368,7 +377,7 @@ class ArtisanAgent:
                     stock_qty=int(stock_qty),
                     sku=sku,
                     image_url=prod_image_url,
-                    image_data=prod_image_data,
+                    image_data=None,
                 )
                 db.add(product)
                 await db.commit()

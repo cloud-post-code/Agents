@@ -61,7 +61,7 @@ async def _sync_product_async(task, product_id: str, tenant_id: str, retry_count
                     "currency": "USD",
                     "availability": "in stock" if product.stock_qty > 0 else "out of stock",
                     "condition": "new",
-                    "image_url": "",
+                    "image_url": product.image_url or "",
                     "url": "",
                 })
 

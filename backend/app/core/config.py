@@ -87,6 +87,14 @@ class Settings(BaseSettings):
     # CORS — comma-separated list of allowed origins, e.g. https://frontend.up.railway.app
     cors_origins: str = ""
 
+    # Object storage — Cloudflare R2 (prod) or MinIO (dev)
+    r2_endpoint: str = ""
+    r2_access_key_id: str = ""
+    r2_secret_access_key: str = ""
+    r2_bucket: str = "artisan-images"
+    r2_public_url: str = ""  # https://images.yourdomain.com or https://<bucket>.r2.dev
+    storage_endpoint_override: str = ""  # http://localhost:9000 for local MinIO
+
     def model_post_init(self, __context) -> None:
         if not self.redis_url or self.redis_url in ("redis://", "redis://:"):
             object.__setattr__(self, "redis_url", _redis_url())

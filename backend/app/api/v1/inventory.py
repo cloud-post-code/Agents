@@ -1,6 +1,7 @@
 """Feature 10: Inventory Core — products, variants, stock adjustments."""
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Optional
 
@@ -14,6 +15,9 @@ from app.db.engine import get_db
 from app.models.product import Product, ProductImage, ProductVariant, StockAdjustment
 from app.models.temp_image import TempImage
 from app.models.user import User
+from app.services.storage import get_storage_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/products", tags=["inventory"])
 
@@ -28,7 +32,11 @@ def _resolve_image(image_url: Optional[str]) -> tuple[Optional[str], Optional[st
     if not image_url:
         return None, None
     if image_url.startswith("data:"):
-        # Strip the data:mime;base64, prefix to store only the raw base64
+        # Legacy path: strip the data:mime;base64, prefix and store raw base64.
+        # New uploads should never reach here — R2 upload happens before this call.
+        logger.warning(
+            "_resolve_image received data: URI — image was not pre-uploaded to R2"
+        )
         try:
             raw = image_url.split(",", 1)[1]
         except IndexError:
@@ -280,8 +288,12 @@ async def delete_product(
     )
     if product is None:
         raise HTTPException(status_code=404, detail="Product not found")
+    image_url_to_delete = product.image_url
     product.deleted_at = datetime.now(timezone.utc)
     await db.commit()
+    # Queue R2 object deletion for orphaned product image
+    from app.tasks.cleanup import delete_product_images
+    delete_product_images.delay(str(product_id), image_url_to_delete)
 
 
 @router.post("/{product_id}/stock-adjustment")
@@ -514,6 +526,8 @@ async def upload_product_image(
         if not file_contents:
             file_contents = None
 
+    storage = get_storage_service()
+
     if file_contents is None and temp_image_id:
         try:
             temp_id = uuid.UUID(temp_image_id)
@@ -527,8 +541,18 @@ async def upload_product_image(
         )
         if temp_img is None:
             raise HTTPException(status_code=404, detail="Temp image not found")
-        product.image_data = temp_img.image_data
-        product.image_url = None
+
+        if temp_img.image_url:
+            # New row: R2 URL already stored
+            product.image_url = temp_img.image_url
+            product.image_data = None
+        elif temp_img.image_data:
+            # Legacy row: decode base64, re-upload to R2
+            raw = _b64.b64decode(temp_img.image_data)
+            product.image_url = await storage.upload_image(
+                raw, temp_img.content_type or "image/jpeg", "images/products"
+            )
+            product.image_data = None
         await db.commit()
         await db.refresh(product)
         return {"status": "ok", "product_id": str(product.id)}
@@ -536,8 +560,11 @@ async def upload_product_image(
     if file_contents is None:
         raise HTTPException(status_code=422, detail="No file or temp_image_id provided")
 
-    product.image_data = _b64.b64encode(file_contents).decode()
-    product.image_url = None
+    content_type = file.content_type if file else "image/jpeg"
+    product.image_url = await storage.upload_image(
+        file_contents, content_type or "image/jpeg", "images/products"
+    )
+    product.image_data = None
     await db.commit()
     await db.refresh(product)
     return {"status": "ok", "product_id": str(product.id)}
@@ -579,8 +606,19 @@ async def image_from_temp(
     if temp_img is None:
         raise HTTPException(status_code=404, detail="Temp image not found")
 
-    product.image_data = temp_img.image_data
-    product.image_url = None
+    import base64 as _b64
+
+    if temp_img.image_url:
+        product.image_url = temp_img.image_url
+        product.image_data = None
+    elif temp_img.image_data:
+        # Legacy row: decode base64 and re-upload to R2
+        raw = _b64.b64decode(temp_img.image_data)
+        storage = get_storage_service()
+        product.image_url = await storage.upload_image(
+            raw, temp_img.content_type or "image/jpeg", "images/products"
+        )
+        product.image_data = None
     await db.commit()
     await db.refresh(product)
     return {"status": "ok", "product_id": str(product_id)}

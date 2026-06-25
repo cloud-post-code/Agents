@@ -19,11 +19,17 @@ class ProductIngestionService:
         db: AsyncSession,
         tenant_id: uuid.UUID,
         vision_model: Optional[ChatOpenAI] = None,
+        storage=None,
     ):
         self.db = db
         self.tenant_id = tenant_id
         # Allow dependency injection for testing
         self.vision_model = vision_model or ChatOpenAI(model="gpt-4o", max_tokens=1024)
+        # Lazy import to avoid circular deps; allow injection for testing
+        if storage is None:
+            from app.services.storage import get_storage_service
+            storage = get_storage_service()
+        self.storage = storage
 
     async def ingest_from_image(
         self,
@@ -40,13 +46,18 @@ class ProductIngestionService:
         Returns:
             List of created product dicts
         """
-        # Convert image to base64 if it's bytes
+        # Upload image to R2 and get permanent URL
         import base64
         if isinstance(image_data, bytes):
-            image_base64 = base64.b64encode(image_data).decode('utf-8')
+            image_bytes = image_data
         else:
-            image_base64 = image_data
-        
+            # Already base64 — decode to bytes for upload
+            image_bytes = base64.b64decode(image_data)
+
+        r2_url = await self.storage.upload_image(
+            image_bytes, "image/jpeg", key_prefix="images/products"
+        )
+
         # Extract product info from image using vision AI
         product_info = await self._extract_from_image(image_data)
 
@@ -62,7 +73,7 @@ class ProductIngestionService:
                 "sku": user_input.get("sku"),
                 "tags": item.get("tags", []),
                 "variants": item.get("variants", []),
-                "image_data": image_base64,  # Store the image
+                "image_url": r2_url,
             }
             products_to_create.append(product_data)
 
@@ -284,8 +295,8 @@ class ProductIngestionService:
             stock_qty=product_data.get("stock_qty", 0),
             sku=product_data.get("sku"),
             description=enriched_description,
-            image_url=product_data.get("image_url"),  # External URL if provided
-            image_data=product_data.get("image_data"),  # Base64 image data
+            image_url=product_data.get("image_url"),
+            image_data=None,
             extra_data={
                 "unique_id": product_data["unique_id"],
                 "tags": tags,
@@ -317,7 +328,6 @@ class ProductIngestionService:
             "price": float(product.price) if product.price else None,
             "stock_qty": product.stock_qty,
             "image_url": product.image_url,
-            "image_data": product.image_data,  # Return for display
         }
 
     async def _enrich_description(self, description: str, name: str) -> str:
