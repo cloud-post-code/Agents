@@ -436,7 +436,39 @@ class ArtisanAgent:
                 logger.error(f"[get_brand_dna] failed: {exc}")
                 return {"error": str(exc)}
 
-        if tool_name in ("generate_social_post", "generate_social_post_batch", "generate_flier") and db is not None and tenant_id:
+        if tool_name == "update_product_stock" and db is not None and tenant_id:
+            try:
+                from app.models.product import Product as _Product
+                from sqlalchemy import select as _select
+                pid = uuid.UUID(args.get("product_id", ""))
+                delta = int(args.get("delta", 0))
+                result = await db.execute(
+                    _select(_Product).where(
+                        _Product.id == pid,
+                        _Product.tenant_id == uuid.UUID(tenant_id),
+                        _Product.deleted_at.is_(None),
+                    )
+                )
+                product = result.scalar_one_or_none()
+                if not product:
+                    return {"error": "Product not found"}
+                new_qty = max(0, (product.stock_qty or 0) + delta)
+                product.stock_qty = new_qty
+                await db.commit()
+                await db.refresh(product)
+                return {
+                    "status": "success",
+                    "product_id": str(product.id),
+                    "product_name": product.name,
+                    "stock_qty": new_qty,
+                    "delta": delta,
+                    "message": f"Stock updated: {product.name} is now {new_qty}.",
+                }
+            except Exception as exc:
+                logger.error(f"[update_product_stock] failed: {exc}")
+                return {"error": str(exc)}
+
+        if tool_name in ("generate_social_post", "generate_social_post_batch", "generate_multi_product_post", "generate_flier", "generate_multi_product_flier") and db is not None and tenant_id:
             try:
                 import httpx
                 from app.core.config import settings as _settings
@@ -459,7 +491,7 @@ class ArtisanAgent:
 
                 if tool_name == "generate_social_post":
                     product = await _get_product(args.get("product_id", ""), uuid.UUID(tenant_id), db)
-                    from app.api.v1.marketing import _generate_caption
+                    from app.api.v1.marketing import _generate_caption, _product_image
                     caption = await _generate_caption(
                         title=product.name,
                         desc=product.description or "",
@@ -468,23 +500,29 @@ class ArtisanAgent:
                         creative_brief=args.get("creative_brief", ""),
                         brand=brand,
                     )
-                    product_image = product.image_url
-                    if not product_image and product.image_data:
-                        product_image = f"data:image/jpeg;base64,{product.image_data}"
                     return {
                         "product_id": args.get("product_id"),
                         "product_name": product.name,
-                        "product_image_url": product_image,
+                        "product_image_url": _product_image(product),
                         "platform": args.get("platform", "instagram"),
                         "post_type": args.get("post_type", "feed_post"),
                         "caption": caption,
                         "brand_name": brand.brand_name if brand else None,
+                        "products": [{
+                            "id": str(product.id),
+                            "name": product.name,
+                            "price": float(product.price) if product.price else None,
+                            "image_url": _product_image(product),
+                            "description": product.description,
+                            "sku": product.sku,
+                            "stock_qty": product.stock_qty,
+                        }],
                     }
 
                 elif tool_name == "generate_social_post_batch":
                     import asyncio
                     product = await _get_product(args.get("product_id", ""), uuid.UUID(tenant_id), db)
-                    from app.api.v1.marketing import _generate_caption, PLATFORM_LABELS
+                    from app.api.v1.marketing import _generate_caption, PLATFORM_LABELS, _product_image
                     platforms = args.get("platforms", ["instagram", "facebook", "tiktok"])
 
                     async def _gen(p):
@@ -499,13 +537,75 @@ class ArtisanAgent:
                         return {"platform": p, "platform_label": PLATFORM_LABELS.get(p, p), "caption": cap}
 
                     posts = await asyncio.gather(*[_gen(p) for p in platforms])
-                    product_image = product.image_url
-                    if not product_image and product.image_data:
-                        product_image = f"data:image/jpeg;base64,{product.image_data}"
                     return {
                         "product_id": args.get("product_id"),
                         "product_name": product.name,
-                        "product_image_url": product_image,
+                        "product_image_url": _product_image(product),
+                        "products": [{
+                            "id": str(product.id),
+                            "name": product.name,
+                            "price": float(product.price) if product.price else None,
+                            "image_url": _product_image(product),
+                            "description": product.description,
+                            "sku": product.sku,
+                            "stock_qty": product.stock_qty,
+                        }],
+                        "posts": list(posts),
+                    }
+
+                elif tool_name == "generate_multi_product_post":
+                    import asyncio as _asyncio
+                    from app.api.v1.marketing import _generate_caption, PLATFORM_LABELS, _product_image
+                    product_ids = args.get("product_ids", [])
+                    platforms = args.get("platforms", ["instagram", "facebook", "tiktok"])
+                    post_type = args.get("post_type", "feed_post")
+                    creative_brief = args.get("creative_brief", "")
+
+                    products_fetched = []
+                    for pid in product_ids:
+                        try:
+                            p = await _get_product(pid, uuid.UUID(tenant_id), db)
+                            products_fetched.append(p)
+                        except Exception:
+                            pass
+
+                    if not products_fetched:
+                        return {"error": "No valid products found for the given IDs"}
+
+                    # Build a combined product description for the LLM
+                    combined_title = " & ".join(p.name for p in products_fetched)
+                    combined_desc = "\n".join(
+                        f"- {p.name}: {p.description or ''}" for p in products_fetched
+                    )
+
+                    async def _gen_multi(plat):
+                        cap = await _generate_caption(
+                            title=combined_title,
+                            desc=combined_desc,
+                            platform=plat,
+                            post_type=post_type,
+                            creative_brief=creative_brief or f"Feature all {len(products_fetched)} products together.",
+                            brand=brand,
+                        )
+                        return {"platform": plat, "platform_label": PLATFORM_LABELS.get(plat, plat), "caption": cap}
+
+                    posts = await _asyncio.gather(*[_gen_multi(plat) for plat in platforms])
+                    return {
+                        "product_ids": product_ids,
+                        "product_name": combined_title,
+                        "product_image_url": _product_image(products_fetched[0]) if products_fetched else None,
+                        "products": [
+                            {
+                                "id": str(p.id),
+                                "name": p.name,
+                                "price": float(p.price) if p.price else None,
+                                "image_url": _product_image(p),
+                                "description": p.description,
+                                "sku": p.sku,
+                                "stock_qty": p.stock_qty,
+                            }
+                            for p in products_fetched
+                        ],
                         "posts": list(posts),
                     }
 
@@ -520,6 +620,29 @@ class ArtisanAgent:
                         call_to_action=args.get("call_to_action", "Shop Now"),
                         promo_text=args.get("promo_text", ""),
                         fmt=args.get("format", "square"),
+                    )
+                    return spec
+
+                elif tool_name == "generate_multi_product_flier":
+                    from app.api.v1.marketing import _build_multi_flier_spec
+                    product_ids = args.get("product_ids", [])
+                    products_fetched = []
+                    for pid in product_ids:
+                        try:
+                            p = await _get_product(pid, uuid.UUID(tenant_id), db)
+                            products_fetched.append(p)
+                        except Exception:
+                            pass
+                    if not products_fetched:
+                        return {"error": "No valid products found for the given IDs"}
+                    spec = _build_multi_flier_spec(
+                        products=products_fetched,
+                        brand=brand,
+                        headline=args.get("headline", ""),
+                        subheadline=args.get("subheadline", ""),
+                        call_to_action=args.get("call_to_action", "Shop Now"),
+                        promo_text=args.get("promo_text", ""),
+                        fmt=args.get("format", "landscape"),
                     )
                     return spec
 

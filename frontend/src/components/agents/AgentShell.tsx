@@ -21,6 +21,7 @@ import { SocialPostPreviewCard } from "@/components/a2ui/surfaces/SocialPostPrev
 import { FlierPreviewCard } from "@/components/a2ui/surfaces/FlierPreviewCard";
 import { ProductPickerCard, ProductPickerItem } from "@/components/a2ui/surfaces/ProductPickerCard";
 import { MarketingStudioCard } from "@/components/a2ui/surfaces/MarketingStudioCard";
+import { MultiFlierPreviewCard } from "@/components/a2ui/surfaces/MultiFlierPreviewCard";
 
 type MessageKind = "user" | "assistant" | "task_created" | "a2ui" | "card";
 
@@ -72,7 +73,7 @@ function isImageUrl(value: unknown): value is string {
     value.includes("/uploads/") || value.includes("/images/") || value.includes("railway") && value.includes("http");
 }
 
-function A2UICard({ payload, onProductPicked }: { payload: Record<string, unknown>; onProductPicked?: (product: ProductPickerItem) => void }) {
+function A2UICard({ payload, onProductPicked, onAction }: { payload: Record<string, unknown>; onProductPicked?: (product: ProductPickerItem) => void; onAction?: (msg: string) => void }) {
   const surface = String(payload.surface ?? payload.component ?? "surface");
   // Support both nested props ({surface, props:{...}}) and flat ({surface, image_url, name, ...})
   const rawProps = (payload.props && typeof payload.props === "object")
@@ -91,7 +92,8 @@ function A2UICard({ payload, onProductPicked }: { payload: Record<string, unknow
   if (surface === "confirm_product") return <ConfirmProductCard {...(props as unknown as Parameters<typeof ConfirmProductCard>[0])} />;
   if (surface === "multi_product") return <MultiProductCard {...(props as unknown as Parameters<typeof MultiProductCard>[0])} />;
   if (surface === "variant_product") return <VariantConfirmCard {...(props as unknown as Parameters<typeof VariantConfirmCard>[0])} />;
-  if (surface === "product_list") return <ProductListCard {...(props as unknown as Parameters<typeof ProductListCard>[0])} />;
+  if (surface === "product_list") return <ProductListCard {...(props as unknown as Parameters<typeof ProductListCard>[0])} onAction={onAction} />;
+  if (surface === "multi_flier_preview") return <MultiFlierPreviewCard {...(props as unknown as Parameters<typeof MultiFlierPreviewCard>[0])} />;
   if (surface === "discount") return <DiscountCard {...(props as unknown as Parameters<typeof DiscountCard>[0])} />;
   if (surface === "bulk_listing") return <BulkListingCard {...(props as unknown as Parameters<typeof BulkListingCard>[0])} />;
   if (surface === "brand_setup") return <BrandSetupCard initialTab={(props as { tab?: "identity_voice" | "visual" | "logo" | "setup" }).tab} />;
@@ -468,6 +470,14 @@ export function AgentShell({ agent }: AgentShellProps) {
     wsRef.current.send(JSON.stringify({ type: "message", content: msg }));
   };
 
+  const handleAction = (message: string) => {
+    if (!wsRef.current || wsRef.current.readyState !== 1) return;
+    pendingRef.current = "";
+    setMessages((prev) => [...prev, { role: "user", content: message, id: crypto.randomUUID() }]);
+    setStreaming(true);
+    wsRef.current.send(JSON.stringify({ type: "message", content: message }));
+  };
+
   const send = () => {
     const text = input.trim();
     const hasFiles = attachedFiles.length > 0;
@@ -571,7 +581,7 @@ export function AgentShell({ agent }: AgentShellProps) {
               {agent.name[0]}
             </div>
             <div className="max-w-[78%]">
-              <A2UICard payload={msg.payload ?? {}} onProductPicked={handleProductPicked} />
+              <A2UICard payload={msg.payload ?? {}} onProductPicked={handleProductPicked} onAction={handleAction} />
             </div>
           </div>
         );

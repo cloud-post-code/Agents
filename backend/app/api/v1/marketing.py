@@ -223,14 +223,75 @@ def _build_flier_spec(
             "name": product.name,
             "description": product.description,
             "price": float(product.price) if product.price else None,
-            "image_url": product.image_url or (
-                f"data:image/jpeg;base64,{product.image_data}" if product.image_data else None
-            ),
+            "image_url": _product_image(product),
             "sku": product.sku,
         },
         "copy": {
             "headline": headline or product.name,
             "subheadline": subheadline or (product.description or "")[:120],
+            "call_to_action": call_to_action,
+            "promo_text": promo_text,
+        },
+        "style": {
+            "background_style": (brand.background_style if brand else None) or "Clean white background",
+            "imagery_style": (brand.imagery_style if brand else None) or "Product-focused lifestyle",
+        },
+    }
+
+
+def _product_image(product: Product) -> str | None:
+    return product.image_url or (
+        f"data:image/jpeg;base64,{product.image_data}" if product.image_data else None
+    )
+
+
+def _build_multi_flier_spec(
+    products: list[Product],
+    brand: "BrandDNA | None",
+    headline: str,
+    subheadline: str,
+    call_to_action: str,
+    promo_text: str,
+    fmt: str,
+) -> dict:
+    """Build a multi-product flier spec for the MultiFlierPreviewCard."""
+    primary = (brand.primary_color if brand else None) or "#1a1a1a"
+    secondary = (brand.secondary_color if brand else None) or "#ffffff"
+    font = (brand.font_family if brand else None) or "Inter"
+    brand_name = (brand.brand_name if brand else None) or "Your Brand"
+
+    dims = {
+        "square": {"width": 1080, "height": 1080, "ratio": "1:1"},
+        "portrait": {"width": 1080, "height": 1350, "ratio": "4:5"},
+        "landscape": {"width": 1200, "height": 628, "ratio": "1.91:1"},
+    }[fmt]
+
+    return {
+        "format": fmt,
+        "dimensions": dims,
+        "brand": {
+            "name": brand_name,
+            "logo_url": brand.logo_url if brand else None,
+            "primary_color": primary,
+            "secondary_color": secondary,
+            "font_family": font,
+            "font_weights": (brand.font_weights if brand else None) or [400, 700],
+        },
+        "products": [
+            {
+                "id": str(p.id),
+                "name": p.name,
+                "description": p.description,
+                "price": float(p.price) if p.price else None,
+                "image_url": _product_image(p),
+                "sku": p.sku,
+                "stock_qty": p.stock_qty,
+            }
+            for p in products
+        ],
+        "copy": {
+            "headline": headline or "Our Collection",
+            "subheadline": subheadline or "",
             "call_to_action": call_to_action,
             "promo_text": promo_text,
         },

@@ -51,11 +51,7 @@ def search_catalog(query: str, limit: int = 10) -> list:
 
 @tool
 def get_product_count() -> dict:
-    """
-    Get the total number of products in the catalog.
-    
-    Returns a simple count without generating a report.
-    """
+    """Get the total number of products in the catalog."""
     return {
         "total_products": 0,
         "message": "Product count tool - implementation needed",
@@ -66,12 +62,8 @@ def get_product_count() -> dict:
 def get_catalog_summary() -> dict:
     """
     Get a quick summary of the product catalog.
-    
-    Returns:
-        - Total product count
-        - Low stock count (products below reorder point)
-        - Total inventory value
-        - Average price
+
+    Returns total product count, low stock count, total inventory value, average price.
     """
     return {
         "total_products": 0,
@@ -107,7 +99,6 @@ def ingest_product_from_image(
     Returns:
         Dict with extracted product info (and product_id if saved)
     """
-    # Real execution handled by _execute_tool in base.py
     return {"status": "stub", "message": "handled by _execute_tool"}
 
 
@@ -115,15 +106,13 @@ def ingest_product_from_image(
 def ingest_products_from_csv(csv_base64: str) -> dict:
     """
     Ingest multiple products from a CSV file.
-    
+
     CSV should contain columns for: name, price, quantity, description, unique_id
     Optional columns: sku, cost
-    
-    The agent will auto-detect column structure and import all products.
-    
+
     Args:
         csv_base64: Base64-encoded CSV file data
-    
+
     Returns:
         Dict with success count, errors, and created products
     """
@@ -133,6 +122,21 @@ def ingest_products_from_csv(csv_base64: str) -> dict:
         "imported": 0,
         "errors": [],
     }
+
+
+@tool
+def update_product_stock(product_id: str, delta: int) -> dict:
+    """
+    Increase or decrease the stock quantity of a product.
+
+    Args:
+        product_id: UUID of the product
+        delta: Positive to add stock, negative to subtract (e.g. 5 or -3)
+
+    Returns:
+        Dict with new stock_qty and product name
+    """
+    return {"status": "stub", "message": "handled by _execute_tool"}
 
 
 @tool
@@ -149,7 +153,7 @@ def generate_social_post(
     creative_brief: str = "",
 ) -> dict:
     """
-    Generate an expert social media caption for a product.
+    Generate an expert social media caption for a single product on one platform.
 
     Args:
         product_id: UUID of the product from the catalog
@@ -186,6 +190,31 @@ def generate_social_post_batch(
 
 
 @tool
+def generate_multi_product_post(
+    product_ids: list,
+    platforms: list = ["instagram", "facebook", "tiktok"],  # noqa: B006
+    post_type: str = "feed_post",
+    creative_brief: str = "",
+) -> dict:
+    """
+    Generate social media captions featuring multiple products at once.
+
+    Use this when the user wants to promote several products together in one post
+    (e.g. a collection, a bundle, a sale on multiple items).
+
+    Args:
+        product_ids: List of product UUIDs to feature together
+        platforms: Target platforms to generate captions for
+        post_type: Content format — feed_post, story, reel, carousel
+        creative_brief: Optional creative direction (e.g. 'holiday sale', 'new arrivals')
+
+    Returns:
+        Dict with posts array (per platform) and product details for all products
+    """
+    return {"status": "stub", "message": "handled by _execute_tool"}
+
+
+@tool
 def generate_flier(
     product_id: str,
     headline: str = "",
@@ -195,7 +224,7 @@ def generate_flier(
     format: str = "square",
 ) -> dict:
     """
-    Generate a branded flier spec for a product using the brand DNA.
+    Generate a branded flier spec for a single product using the brand DNA.
 
     Args:
         product_id: UUID of the product
@@ -211,6 +240,34 @@ def generate_flier(
     return {"status": "stub", "message": "handled by _execute_tool"}
 
 
+@tool
+def generate_multi_product_flier(
+    product_ids: list,
+    headline: str = "",
+    subheadline: str = "",
+    call_to_action: str = "Shop Now",
+    promo_text: str = "",
+    format: str = "landscape",
+) -> dict:
+    """
+    Generate a branded flier featuring multiple products (collection/sale flier).
+
+    Use when the user wants a flier showcasing several products together.
+
+    Args:
+        product_ids: List of product UUIDs to feature (2–6 recommended)
+        headline: Main headline (e.g. 'New Arrivals', 'Holiday Sale')
+        subheadline: Supporting copy
+        call_to_action: CTA text shared across all products
+        promo_text: Optional promo badge (e.g. 'UP TO 30% OFF')
+        format: square, portrait, or landscape (landscape recommended for multi-product)
+
+    Returns:
+        Structured multi-product flier spec
+    """
+    return {"status": "stub", "message": "handled by _execute_tool"}
+
+
 SHARED_TOOLS = [render_ui, generate_report]
 PRODUCT_MANAGER_TOOLS = SHARED_TOOLS + [
     search_catalog,
@@ -218,11 +275,14 @@ PRODUCT_MANAGER_TOOLS = SHARED_TOOLS + [
     get_catalog_summary,
     ingest_product_from_image,
     ingest_products_from_csv,
+    update_product_stock,
 ]
 MARKETER_TOOLS = SHARED_TOOLS + [
     search_catalog,
     get_brand_dna,
     generate_social_post,
     generate_social_post_batch,
+    generate_multi_product_post,
     generate_flier,
+    generate_multi_product_flier,
 ]
