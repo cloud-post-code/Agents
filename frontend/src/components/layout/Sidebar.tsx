@@ -22,7 +22,6 @@ const AGENT_COLORS: Record<string, { active: string; dot: string }> = {
 const WORKSPACE_ITEMS = [
   { href: "/dashboard",     label: "Dashboard",     icon: "⊞" },
   { href: "/tasks",         label: "Tasks",         icon: "✓" },
-  { href: "/inventory",     label: "Inventory",     icon: "📦" },
   { href: "/calendar",      label: "Calendar",      icon: "◻" },
   { href: "/reports",       label: "Reports",       icon: "▤" },
   { href: "/notifications", label: "Notifications", icon: "🔔" },
