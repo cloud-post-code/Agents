@@ -73,7 +73,7 @@ function isImageUrl(value: unknown): value is string {
     value.includes("/uploads/") || value.includes("/images/") || value.includes("railway") && value.includes("http");
 }
 
-function A2UICard({ payload, onProductPicked, onAction }: { payload: Record<string, unknown>; onProductPicked?: (product: ProductPickerItem) => void; onAction?: (msg: string) => void }) {
+function A2UICard({ payload, onProductPicked, onMultiProductPicked, onAction }: { payload: Record<string, unknown>; onProductPicked?: (product: ProductPickerItem) => void; onMultiProductPicked?: (products: ProductPickerItem[]) => void; onAction?: (msg: string) => void }) {
   const surface = String(payload.surface ?? payload.component ?? "surface");
   // Support both nested props ({surface, props:{...}}) and flat ({surface, image_url, name, ...})
   const rawProps = (payload.props && typeof payload.props === "object")
@@ -103,6 +103,7 @@ function A2UICard({ payload, onProductPicked, onAction }: { payload: Record<stri
     <ProductPickerCard
       {...(props as unknown as Parameters<typeof ProductPickerCard>[0])}
       onSelect={onProductPicked}
+      onMultiSelect={onMultiProductPicked}
     />
   );
   if (surface === "marketing_studio") return (
@@ -470,6 +471,16 @@ export function AgentShell({ agent }: AgentShellProps) {
     wsRef.current.send(JSON.stringify({ type: "message", content: msg }));
   };
 
+  const handleMultiProductPicked = (products: ProductPickerItem[]) => {
+    if (!wsRef.current || wsRef.current.readyState !== 1) return;
+    const list = products.map((p) => `"${p.name}" (ID: ${p.id})`).join(", ");
+    const msg = `I selected these products: ${list}. Please continue with all of them.`;
+    pendingRef.current = "";
+    setMessages((prev) => [...prev, { role: "user", content: msg, id: crypto.randomUUID() }]);
+    setStreaming(true);
+    wsRef.current.send(JSON.stringify({ type: "message", content: msg }));
+  };
+
   const handleAction = (message: string) => {
     if (!wsRef.current || wsRef.current.readyState !== 1) return;
     pendingRef.current = "";
@@ -581,7 +592,7 @@ export function AgentShell({ agent }: AgentShellProps) {
               {agent.name[0]}
             </div>
             <div className="max-w-[78%]">
-              <A2UICard payload={msg.payload ?? {}} onProductPicked={handleProductPicked} onAction={handleAction} />
+              <A2UICard payload={msg.payload ?? {}} onProductPicked={handleProductPicked} onMultiProductPicked={handleMultiProductPicked} onAction={handleAction} />
             </div>
           </div>
         );

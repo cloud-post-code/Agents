@@ -268,6 +268,60 @@ def generate_multi_product_flier(
     return {"status": "stub", "message": "handled by _execute_tool"}
 
 
+@tool
+def generate_flier_image(
+    product_id: str,
+    headline: str = "",
+    subheadline: str = "",
+    call_to_action: str = "Shop Now",
+    promo_text: str = "",
+    format: str = "square",
+) -> dict:
+    """
+    Generate a photorealistic AI marketing image for a single-product flier using DALL-E 3.
+    Returns a flier spec with an ai_image_url field containing the generated image.
+
+    Args:
+        product_id: UUID of the product
+        headline: Main headline text
+        subheadline: Supporting copy
+        call_to_action: CTA text
+        promo_text: Optional promo badge text
+        format: square, portrait, or landscape
+
+    Returns:
+        Full flier spec with ai_image_url added
+    """
+    return {"status": "stub", "message": "handled by _execute_tool"}
+
+
+@tool
+def generate_multi_flier_image(
+    product_ids: list,
+    headline: str = "",
+    subheadline: str = "",
+    call_to_action: str = "Shop Now",
+    promo_text: str = "",
+    format: str = "landscape",
+) -> dict:
+    """
+    Generate a photorealistic AI marketing image for a multi-product collection flier using DALL-E 3.
+    Returns a multi-flier spec with an ai_image_url field containing the generated image.
+
+    Args:
+        product_ids: List of product UUIDs
+        headline: Collection headline
+        subheadline: Supporting copy
+        call_to_action: CTA text
+        promo_text: Optional promo badge text
+        format: square, portrait, or landscape
+
+    Returns:
+        Full multi-flier spec with ai_image_url added
+    """
+    return {"status": "stub", "message": "handled by _execute_tool"}
+
+
 SHARED_TOOLS = [render_ui, generate_report]
 PRODUCT_MANAGER_TOOLS = SHARED_TOOLS + [
     search_catalog,
@@ -284,5 +338,7 @@ MARKETER_TOOLS = SHARED_TOOLS + [
     generate_social_post_batch,
     generate_multi_product_post,
     generate_flier,
+    generate_flier_image,
     generate_multi_product_flier,
+    generate_multi_flier_image,
 ]

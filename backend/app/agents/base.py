@@ -468,7 +468,7 @@ class ArtisanAgent:
                 logger.error(f"[update_product_stock] failed: {exc}")
                 return {"error": str(exc)}
 
-        if tool_name in ("generate_social_post", "generate_social_post_batch", "generate_multi_product_post", "generate_flier", "generate_multi_product_flier") and db is not None and tenant_id:
+        if tool_name in ("generate_social_post", "generate_social_post_batch", "generate_multi_product_post", "generate_flier", "generate_flier_image", "generate_multi_product_flier", "generate_multi_flier_image") and db is not None and tenant_id:
             try:
                 import httpx
                 from app.core.config import settings as _settings
@@ -644,6 +644,81 @@ class ArtisanAgent:
                         promo_text=args.get("promo_text", ""),
                         fmt=args.get("format", "landscape"),
                     )
+                    return spec
+
+                elif tool_name == "generate_flier_image":
+                    from app.api.v1.marketing import (
+                        _build_flier_spec, _generate_dalle_image, _flier_dalle_prompt,
+                    )
+                    product = await _get_product(args.get("product_id", ""), uuid.UUID(tenant_id), db)
+                    fmt = args.get("format", "square")
+                    spec = _build_flier_spec(
+                        product=product,
+                        brand=brand,
+                        headline=args.get("headline", ""),
+                        subheadline=args.get("subheadline", ""),
+                        call_to_action=args.get("call_to_action", "Shop Now"),
+                        promo_text=args.get("promo_text", ""),
+                        fmt=fmt,
+                    )
+                    size_map = {"square": "1024x1024", "portrait": "1024x1792", "landscape": "1792x1024"}
+                    dalle_size = size_map.get(fmt, "1024x1024")
+                    primary = spec["brand"]["primary_color"]
+                    secondary = spec["brand"]["secondary_color"]
+                    headline = spec["copy"]["headline"]
+                    imagery_style = spec["style"].get("imagery_style", "Product-focused lifestyle")
+                    background_style = spec["style"].get("background_style", "Clean white background")
+                    prompt = _flier_dalle_prompt(
+                        brand_name=spec["brand"]["name"],
+                        product_name=product.name,
+                        product_description=product.description or "",
+                        headline=headline,
+                        primary_color=primary,
+                        secondary_color=secondary,
+                        imagery_style=imagery_style,
+                        background_style=background_style,
+                    )
+                    ai_image_url = await _generate_dalle_image(prompt, size=dalle_size)
+                    spec["ai_image_url"] = ai_image_url
+                    return spec
+
+                elif tool_name == "generate_multi_flier_image":
+                    from app.api.v1.marketing import (
+                        _build_multi_flier_spec, _generate_dalle_image, _multi_flier_dalle_prompt,
+                    )
+                    product_ids = args.get("product_ids", [])
+                    products_fetched = []
+                    for pid in product_ids:
+                        try:
+                            p = await _get_product(pid, uuid.UUID(tenant_id), db)
+                            products_fetched.append(p)
+                        except Exception:
+                            pass
+                    if not products_fetched:
+                        return {"error": "No valid products found for the given IDs"}
+                    fmt = args.get("format", "landscape")
+                    spec = _build_multi_flier_spec(
+                        products=products_fetched,
+                        brand=brand,
+                        headline=args.get("headline", ""),
+                        subheadline=args.get("subheadline", ""),
+                        call_to_action=args.get("call_to_action", "Shop Now"),
+                        promo_text=args.get("promo_text", ""),
+                        fmt=fmt,
+                    )
+                    size_map = {"square": "1024x1024", "portrait": "1024x1792", "landscape": "1792x1024"}
+                    dalle_size = size_map.get(fmt, "1792x1024")
+                    prompt = _multi_flier_dalle_prompt(
+                        brand_name=spec["brand"]["name"],
+                        product_names=[p.name for p in products_fetched],
+                        headline=spec["copy"]["headline"],
+                        primary_color=spec["brand"]["primary_color"],
+                        secondary_color=spec["brand"]["secondary_color"],
+                        imagery_style=spec["style"].get("imagery_style", "Product-focused lifestyle"),
+                        background_style=spec["style"].get("background_style", "Clean white background"),
+                    )
+                    ai_image_url = await _generate_dalle_image(prompt, size=dalle_size)
+                    spec["ai_image_url"] = ai_image_url
                     return spec
 
             except Exception as exc:

@@ -239,6 +239,71 @@ def _build_flier_spec(
     }
 
 
+async def _generate_dalle_image(prompt: str, size: str = "1024x1024") -> str | None:
+    """Call DALL-E 3 with the given prompt and return the image URL. Returns None on failure."""
+    api_key = os.environ.get("OPENAI_API_KEY", "")
+    if not api_key or api_key.startswith("sk-test"):
+        return None
+    try:
+        from openai import AsyncOpenAI
+        client = AsyncOpenAI(api_key=api_key)
+        resp = await client.images.generate(
+            model="dall-e-3",
+            prompt=prompt,
+            size=size,  # type: ignore[arg-type]
+            quality="standard",
+            n=1,
+        )
+        return resp.data[0].url
+    except Exception as exc:
+        logger.warning(f"DALL-E generation failed: {exc}")
+        return None
+
+
+def _flier_dalle_prompt(
+    brand_name: str,
+    product_name: str,
+    product_description: str,
+    headline: str,
+    primary_color: str,
+    secondary_color: str,
+    imagery_style: str,
+    background_style: str,
+) -> str:
+    return (
+        f"Create a professional marketing flier image for '{brand_name}'. "
+        f"Featured product: {product_name}. {product_description}. "
+        f"Headline text on the flier: '{headline}'. "
+        f"Color palette: primary {primary_color}, accent {secondary_color}. "
+        f"Style: {imagery_style}. Background: {background_style}. "
+        "High quality, clean layout, commercial photography aesthetic. "
+        "No watermarks. Do not include any text or logos in the generated image — "
+        "the image should be the visual backdrop/scene only."
+    )
+
+
+def _multi_flier_dalle_prompt(
+    brand_name: str,
+    product_names: list[str],
+    headline: str,
+    primary_color: str,
+    secondary_color: str,
+    imagery_style: str,
+    background_style: str,
+) -> str:
+    products_str = ", ".join(product_names)
+    return (
+        f"Create a professional collection marketing flier image for '{brand_name}'. "
+        f"Featured products: {products_str}. "
+        f"Headline: '{headline}'. "
+        f"Color palette: primary {primary_color}, accent {secondary_color}. "
+        f"Style: {imagery_style}. Background: {background_style}. "
+        "Show the products elegantly arranged together in a lifestyle or flat-lay composition. "
+        "High quality, clean commercial photography aesthetic. No watermarks. "
+        "Do not include any text or logos — image is the visual scene only."
+    )
+
+
 def _product_image(product: Product) -> str | None:
     return product.image_url or (
         f"data:image/jpeg;base64,{product.image_data}" if product.image_data else None

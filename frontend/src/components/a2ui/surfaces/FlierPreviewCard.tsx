@@ -43,6 +43,8 @@ export interface FlierPreviewCardProps {
     background_style?: string;
     imagery_style?: string;
   };
+  /** AI-generated marketing image from DALL-E 3 — shown full-bleed behind the copy */
+  ai_image_url?: string | null;
 }
 
 function hex2rgba(hex: string, alpha = 1): string {
@@ -66,6 +68,7 @@ export function FlierPreviewCard({
   brand,
   product,
   copy,
+  ai_image_url,
 }: FlierPreviewCardProps) {
   const [downloading, setDownloading] = useState(false);
   const [shareMsg, setShareMsg] = useState("");
@@ -83,7 +86,8 @@ export function FlierPreviewCard({
   const cta = copy?.call_to_action || "Shop Now";
   const promo = copy?.promo_text;
   const price = product?.price;
-  const imageUrl = product?.image_url;
+  // AI-generated image takes priority; fall back to product photo
+  const imageUrl = ai_image_url || product?.image_url;
 
   // Portrait is taller so use a bigger image box; landscape uses a side-by-side
   const isLandscape = format === "landscape";
@@ -154,6 +158,15 @@ export function FlierPreviewCard({
         </div>
       </div>
 
+      {/* AI image badge */}
+      {ai_image_url && (
+        <div className="px-5 pb-0 pt-2">
+          <span className="inline-flex items-center gap-1 text-xs bg-purple-100 text-purple-700 px-2.5 py-1 rounded-full font-medium">
+            ✨ AI-generated image
+          </span>
+        </div>
+      )}
+
       {/* Flier canvas */}
       <div className="p-4">
         <div
@@ -161,7 +174,53 @@ export function FlierPreviewCard({
           style={{ backgroundColor: primaryColor, fontFamily }}
           className="rounded-xl overflow-hidden w-full"
         >
-          {isLandscape ? (
+          {/* ── AI full-bleed poster layout (when DALL-E image is available) ── */}
+          {ai_image_url ? (
+            <div className={`relative ${format === "landscape" ? "" : format === "portrait" ? "aspect-[4/5]" : "aspect-square"}`}
+              style={format === "landscape" ? { minHeight: 320 } : {}}>
+              {/* Full-bleed AI image */}
+              <img
+                src={ai_image_url}
+                alt="AI-generated flier"
+                className="absolute inset-0 w-full h-full object-cover"
+                crossOrigin="anonymous"
+              />
+              {/* Gradient overlay for text legibility */}
+              <div
+                className="absolute inset-0"
+                style={{ background: `linear-gradient(to bottom, ${hex2rgba(primaryColor, 0.15)} 0%, transparent 40%, ${hex2rgba(primaryColor, 0.75)} 70%, ${hex2rgba(primaryColor, 0.95)} 100%)` }}
+              />
+              {/* Brand top-left */}
+              <div className="absolute top-4 left-4 z-10">
+                {brand?.logo_url ? (
+                  <img src={brand.logo_url} alt={brand?.name} className="h-8 object-contain drop-shadow" crossOrigin="anonymous" />
+                ) : (
+                  <span className="text-xs font-bold uppercase tracking-widest drop-shadow" style={{ color: textOnPrimary, fontFamily }}>
+                    {brand?.name || "Your Brand"}
+                  </span>
+                )}
+              </div>
+              {/* Promo badge top-right */}
+              {promo && (
+                <div className="absolute top-4 right-4 z-10">
+                  <span className="text-xs font-bold px-3 py-1.5 rounded-full shadow-lg" style={{ backgroundColor: secondaryColor, color: textOnSecondary, fontFamily }}>
+                    {promo}
+                  </span>
+                </div>
+              )}
+              {/* Copy bottom */}
+              <div className="absolute bottom-0 left-0 right-0 z-10 px-5 pb-5">
+                {price != null && (
+                  <div className="text-sm font-bold mb-1 opacity-90" style={{ color: secondaryColor, fontFamily }}>${price.toFixed(2)}</div>
+                )}
+                <h2 className="text-2xl font-bold leading-tight mb-1.5 drop-shadow" style={{ color: textOnPrimary, fontFamily }}>{headline}</h2>
+                {subheadline && (
+                  <p className="text-sm leading-snug mb-4 opacity-85 drop-shadow" style={{ color: textOnPrimary, fontFamily }}>{subheadline}</p>
+                )}
+                <span className="inline-block px-5 py-2.5 rounded-full text-sm font-bold shadow-md" style={{ backgroundColor: secondaryColor, color: textOnSecondary, fontFamily }}>{cta}</span>
+              </div>
+            </div>
+          ) : isLandscape ? (
             /* ── Landscape: side-by-side image + copy ── */
             <div className="flex" style={{ minHeight: 300 }}>
               {/* Left: product image */}
@@ -306,7 +365,7 @@ export function FlierPreviewCard({
                 </div>
               </div>
             </div>
-          )}
+          ) /* end non-AI layouts */}
         </div>
       </div>
 
