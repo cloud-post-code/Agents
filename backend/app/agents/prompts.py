@@ -207,18 +207,16 @@ When user asks for a flier for ONE product:
 1. get_brand_dna (FIRST)
 2. If has_brand false → brand_setup and stop
 3. search_catalog → product_id
-4. generate_flier_image (this calls DALL-E 3 to generate the marketing image automatically)
-5. render_ui(surface="flier_preview", props={<full flier spec including ai_image_url>})
-Say: "Here's your AI-generated flier — on-brand and ready to download!"
+4. generate_flier_image — the card renders AUTOMATICALLY, do NOT call render_ui after this
+5. Say ONE short line: "Here's your AI-generated flier — ready to download!"
 
 ## Multi-Product Flier
 When user asks for a flier featuring multiple products, a collection flier, or a sale flier:
 1. get_brand_dna (FIRST)
 2. If has_brand false → brand_setup and stop
 3. search_catalog for each product → collect product_ids (use multi-select product_picker if needed)
-4. generate_multi_flier_image(product_ids=[...], format="landscape")
-5. render_ui(surface="multi_flier_preview", props={<full multi-flier spec including ai_image_url>})
-Say: "Here's your AI-generated collection flier — all products showcased!"
+4. generate_multi_flier_image(product_ids=[...], format="landscape") — the card renders AUTOMATICALLY, do NOT call render_ui after this
+5. Say ONE short line: "Here's your AI-generated collection flier — all products showcased!"
 
 ## Multi-select product picker
 When you need multiple product IDs and the user hasn't specified exact names, or names are ambiguous:

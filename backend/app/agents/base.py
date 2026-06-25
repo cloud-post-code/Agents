@@ -154,6 +154,19 @@ class ArtisanAgent:
                 if tool_name == "render_ui":
                     yield AgentEvent(type="a2ui", payload=result)
 
+                # Flier image tools auto-emit their card so the UI appears
+                # immediately — the LLM doesn't need to make a separate render_ui call
+                if tool_name == "generate_flier_image" and "error" not in result:
+                    yield AgentEvent(type="a2ui", payload={
+                        "surface": "flier_preview",
+                        "props": result,
+                    })
+                if tool_name == "generate_multi_flier_image" and "error" not in result:
+                    yield AgentEvent(type="a2ui", payload={
+                        "surface": "multi_flier_preview",
+                        "props": result,
+                    })
+
                 tool_result_str = json.dumps(result)
                 messages.append(ToolMessage(content=tool_result_str, tool_call_id=tc["id"]))
 
@@ -680,6 +693,12 @@ class ArtisanAgent:
                     )
                     ai_image_url = await _generate_dalle_image(prompt, size=dalle_size)
                     spec["ai_image_url"] = ai_image_url
+                    spec["_rendered"] = True
+                    spec["_instruction"] = (
+                        "The flier card has already been rendered in the UI automatically. "
+                        "Do NOT call render_ui again. Just say one short line like: "
+                        "'Here's your AI-generated flier — ready to download!'"
+                    )
                     return spec
 
                 elif tool_name == "generate_multi_flier_image":
@@ -719,6 +738,12 @@ class ArtisanAgent:
                     )
                     ai_image_url = await _generate_dalle_image(prompt, size=dalle_size)
                     spec["ai_image_url"] = ai_image_url
+                    spec["_rendered"] = True
+                    spec["_instruction"] = (
+                        "The collection flier card has already been rendered in the UI automatically. "
+                        "Do NOT call render_ui again. Just say one short line like: "
+                        "'Here's your AI-generated collection flier — ready to download!'"
+                    )
                     return spec
 
             except Exception as exc:
