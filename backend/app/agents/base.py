@@ -348,6 +348,18 @@ class ArtisanAgent:
                 # --- Save step ---
                 from app.models.product import Product
 
+                # Store image correctly: data URIs → image_data col, HTTP URLs → image_url col
+                prod_image_url = None
+                prod_image_data = None
+                if image_url:
+                    if image_url.startswith("data:"):
+                        try:
+                            prod_image_data = image_url.split(",", 1)[1]
+                        except IndexError:
+                            prod_image_data = image_url
+                    elif image_url.startswith("http"):
+                        prod_image_url = image_url[:1024]
+
                 product = Product(
                     tenant_id=uuid.UUID(tenant_id),
                     name=extracted_name,
@@ -355,7 +367,8 @@ class ArtisanAgent:
                     price=float(price) if price else None,
                     stock_qty=int(stock_qty),
                     sku=sku,
-                    image_url=image_url if image_url.startswith("http") else None,
+                    image_url=prod_image_url,
+                    image_data=prod_image_data,
                 )
                 db.add(product)
                 await db.commit()

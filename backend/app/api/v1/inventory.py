@@ -17,7 +17,31 @@ from app.models.user import User
 router = APIRouter(prefix="/products", tags=["inventory"])
 
 
+def _resolve_image(image_url: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+    """Return (image_url_col, image_data_col) from a raw image_url value.
+
+    If the value is a data URI (base64), store it in image_data and leave
+    image_url_col as None — the Text column has no length limit.
+    If it's a real HTTP URL, store it in image_url_col (max 1024 chars).
+    """
+    if not image_url:
+        return None, None
+    if image_url.startswith("data:"):
+        # Strip the data:mime;base64, prefix to store only the raw base64
+        try:
+            raw = image_url.split(",", 1)[1]
+        except IndexError:
+            raw = image_url
+        return None, raw
+    return image_url[:1024], None
+
+
 def _product_dict(p: Product, variants: list = None) -> dict:
+    # Reconstruct the image URL for the frontend
+    image_url = p.image_url
+    if not image_url and p.image_data:
+        image_url = f"data:image/jpeg;base64,{p.image_data}"
+
     d = {
         "id": str(p.id),
         "tenant_id": str(p.tenant_id),
@@ -29,6 +53,7 @@ def _product_dict(p: Product, variants: list = None) -> dict:
         "stock_qty": p.stock_qty,
         "reorder_point": p.reorder_point,
         "weight_grams": p.weight_grams,
+        "image_url": image_url,
         "metadata": p.extra_data,
         "created_at": p.created_at.isoformat() if p.created_at else None,
         "updated_at": p.updated_at.isoformat() if p.updated_at else None,
@@ -59,6 +84,7 @@ class CreateProductRequest(BaseModel):
     stock_qty: int = 0
     reorder_point: int = 5
     weight_grams: Optional[int] = None
+    image_url: Optional[str] = None
 
 
 class UpdateProductRequest(BaseModel):
@@ -69,6 +95,7 @@ class UpdateProductRequest(BaseModel):
     cost: Optional[float] = None
     reorder_point: Optional[int] = None
     weight_grams: Optional[int] = None
+    image_url: Optional[str] = None
 
 
 class StockAdjustmentRequest(BaseModel):
@@ -110,6 +137,7 @@ async def create_product(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    img_url_col, img_data_col = _resolve_image(body.image_url)
     product = Product(
         tenant_id=current_user.tenant_id,
         name=body.name,
@@ -120,6 +148,8 @@ async def create_product(
         stock_qty=body.stock_qty,
         reorder_point=body.reorder_point,
         weight_grams=body.weight_grams,
+        image_url=img_url_col,
+        image_data=img_data_col,
     )
     db.add(product)
     await db.commit()
@@ -167,7 +197,12 @@ async def update_product(
     )
     if product is None:
         raise HTTPException(status_code=404, detail="Product not found")
-    for field, value in body.model_dump(exclude_none=True).items():
+    updates = body.model_dump(exclude_none=True)
+    if "image_url" in updates:
+        img_url_col, img_data_col = _resolve_image(updates.pop("image_url"))
+        product.image_url = img_url_col
+        product.image_data = img_data_col
+    for field, value in updates.items():
         setattr(product, field, value)
     await db.commit()
     await db.refresh(product)
