@@ -4,14 +4,16 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from functools import lru_cache
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
+from fastapi import HTTPException
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+_storage_instance: "StorageService | None" = None
 
 
 def _ext_for_content_type(content_type: str) -> str:
@@ -26,14 +28,7 @@ def _ext_for_content_type(content_type: str) -> str:
 
 
 class StorageService:
-    def __init__(self) -> None:
-        endpoint = settings.storage_endpoint_override or settings.r2_endpoint
-        if not endpoint:
-            raise RuntimeError(
-                "Object storage not configured. "
-                "Set R2_ENDPOINT (and R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / R2_PUBLIC_URL) "
-                "in your .env, or start MinIO via docker compose and set STORAGE_ENDPOINT_OVERRIDE."
-            )
+    def __init__(self, endpoint: str) -> None:
         self._bucket = settings.r2_bucket
         self._public_url = (settings.r2_public_url or endpoint).rstrip("/")
         self._client = boto3.client(
@@ -43,10 +38,6 @@ class StorageService:
             aws_secret_access_key=settings.r2_secret_access_key or "minio123",
             region_name="auto",
         )
-
-    # ------------------------------------------------------------------ #
-    # Public API
-    # ------------------------------------------------------------------ #
 
     async def upload_image(
         self,
@@ -70,7 +61,7 @@ class StorageService:
             )
         except (BotoCoreError, ClientError) as exc:
             logger.error("[storage] upload failed key=%s err=%s", key, exc)
-            raise RuntimeError(f"Image upload failed: {exc}") from exc
+            raise HTTPException(status_code=502, detail=f"Image upload to storage failed: {exc}") from exc
 
         return f"{self._public_url}/{key}"
 
@@ -99,6 +90,22 @@ class StorageService:
         return url[len(self._public_url):].lstrip("/")
 
 
-@lru_cache(maxsize=1)
 def get_storage_service() -> StorageService:
-    return StorageService()
+    """Return the singleton StorageService, or raise HTTP 503 if not configured."""
+    global _storage_instance
+    if _storage_instance is not None:
+        return _storage_instance
+
+    endpoint = settings.storage_endpoint_override or settings.r2_endpoint
+    if not endpoint:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Image storage is not configured on this server. "
+                "Set R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, "
+                "R2_BUCKET, and R2_PUBLIC_URL as environment variables."
+            ),
+        )
+
+    _storage_instance = StorageService(endpoint)
+    return _storage_instance
