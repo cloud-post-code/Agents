@@ -330,87 +330,109 @@ export function AgentShell({ agent }: AgentShellProps) {
     }
   };
 
-  // Connect WebSocket after history is loaded
+  // Connect WebSocket after history is loaded — auto-reconnects on close
   useEffect(() => {
     if (!token || !historyLoaded) return;
 
-    const base = getApiBase().replace(/^https/, "wss").replace(/^http/, "ws");
-    const ws = new WebSocket(`${base}/ws/agent/${roleRef.current}/chat`);
+    let destroyed = false;
+    let retryTimeout: ReturnType<typeof setTimeout> | null = null;
+    let retryDelay = 1000;
 
-    ws.onopen = () => {
-      setConnected(true);
-      setError(null);
-      ws.send(JSON.stringify({ type: "auth", token: tokenRef.current }));
-    };
+    const connect = () => {
+      if (destroyed) return;
+      const base = getApiBase().replace(/^https/, "wss").replace(/^http/, "ws");
+      const ws = new WebSocket(`${base}/ws/agent/${roleRef.current}/chat`);
 
-    ws.onclose = () => {
-      setConnected(false);
-      wsRef.current = null;
-    };
+      ws.onopen = () => {
+        setConnected(true);
+        setError(null);
+        retryDelay = 1000;
+        ws.send(JSON.stringify({ type: "auth", token: tokenRef.current }));
+      };
 
-    ws.onerror = () => setError("Connection lost. Refresh to retry.");
+      ws.onclose = () => {
+        setConnected(false);
+        wsRef.current = null;
+        if (!destroyed) {
+          retryTimeout = setTimeout(() => {
+            retryDelay = Math.min(retryDelay * 2, 15000);
+            connect();
+          }, retryDelay);
+        }
+      };
 
-    ws.onmessage = (e) => {
-      const data = JSON.parse(e.data);
+      ws.onerror = () => {
+        // onclose fires after onerror — reconnect handled there
+      };
 
-      if (data.type === "session_id") {
-        // session confirmed — nothing to show
-        return;
-      }
+      ws.onmessage = (e) => {
+        const data = JSON.parse(e.data);
 
-      if (data.type === "token") {
-        pendingRef.current += data.content;
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (last?.role === "assistant" && last.id === "streaming") {
-            return [...prev.slice(0, -1), { ...last, content: pendingRef.current }];
-          }
-          return [...prev, { role: "assistant", content: pendingRef.current, id: "streaming" }];
-        });
+        if (data.type === "session_id") {
+          return;
+        }
 
-      } else if (data.type === "task_created") {
-        setMessages((prev) => {
-          const finalised = prev.map((m) =>
-            m.id === "streaming" ? { ...m, id: crypto.randomUUID() } : m
+        if (data.type === "token") {
+          pendingRef.current += data.content;
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last?.role === "assistant" && last.id === "streaming") {
+              return [...prev.slice(0, -1), { ...last, content: pendingRef.current }];
+            }
+            return [...prev, { role: "assistant", content: pendingRef.current, id: "streaming" }];
+          });
+
+        } else if (data.type === "task_created") {
+          setMessages((prev) => {
+            const finalised = prev.map((m) =>
+              m.id === "streaming" ? { ...m, id: crypto.randomUUID() } : m
+            );
+            return [...finalised, {
+              role: "task_created" as MessageKind,
+              content: "",
+              id: crypto.randomUUID(),
+              payload: data.payload ?? {},
+            }];
+          });
+          pendingRef.current = "";
+
+        } else if (data.type === "a2ui") {
+          setMessages((prev) => {
+            const finalised = prev.map((m) =>
+              m.id === "streaming" ? { ...m, id: crypto.randomUUID() } : m
+            );
+            return [...finalised, {
+              role: "a2ui" as MessageKind,
+              content: "",
+              id: crypto.randomUUID(),
+              payload: data.payload ?? {},
+            }];
+          });
+          pendingRef.current = "";
+
+        } else if (data.type === "done") {
+          pendingRef.current = "";
+          setMessages((prev) =>
+            prev.map((m) => (m.id === "streaming" ? { ...m, id: crypto.randomUUID() } : m))
           );
-          return [...finalised, {
-            role: "task_created" as MessageKind,
-            content: "",
-            id: crypto.randomUUID(),
-            payload: data.payload ?? {},
-          }];
-        });
-        pendingRef.current = "";
+          setStreaming(false);
 
-      } else if (data.type === "a2ui") {
-        setMessages((prev) => {
-          const finalised = prev.map((m) =>
-            m.id === "streaming" ? { ...m, id: crypto.randomUUID() } : m
-          );
-          return [...finalised, {
-            role: "a2ui" as MessageKind,
-            content: "",
-            id: crypto.randomUUID(),
-            payload: data.payload ?? {},
-          }];
-        });
-        pendingRef.current = "";
+        } else if (data.type === "error") {
+          setError(data.message || "Agent error");
+          setStreaming(false);
+        }
+      };
 
-      } else if (data.type === "done") {
-        pendingRef.current = "";
-        setMessages((prev) =>
-          prev.map((m) => (m.id === "streaming" ? { ...m, id: crypto.randomUUID() } : m))
-        );
-        setStreaming(false);
-
-      } else if (data.type === "error") {
-        setError(data.message || "Agent error");
-        setStreaming(false);
-      }
+      wsRef.current = ws;
     };
 
-    wsRef.current = ws;
-    return () => ws.close();
+    connect();
+
+    return () => {
+      destroyed = true;
+      if (retryTimeout) clearTimeout(retryTimeout);
+      wsRef.current?.close();
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [historyLoaded, !!token]);
 
