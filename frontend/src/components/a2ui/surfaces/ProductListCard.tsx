@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { apiFetch, getApiBase } from "@/lib/api";
+import { useAuth } from "@/hooks/useAuth";
 
 interface ProductListItem {
   id: string;
@@ -60,16 +62,41 @@ function StockAdjuster({ product, onAction }: { product: ProductListItem; onActi
 }
 
 export function ProductListCard({
-  products,
-  total,
+  products: initialProducts,
+  total: initialTotal,
   page,
   per_page,
   onPageChange,
   onAction,
 }: ProductListCardProps) {
+  const { token } = useAuth();
+  const [products, setProducts] = useState(initialProducts);
+  const [total, setTotal] = useState(initialTotal);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
   const totalPages = Math.max(1, Math.ceil(total / per_page));
   const hasPrev = page > 1;
   const hasNext = page < totalPages;
+
+  const handleDelete = async (p: ProductListItem) => {
+    if (!token) return;
+    setDeletingId(p.id);
+    try {
+      const apiBase = getApiBase();
+      const res = await fetch(`${apiBase}/api/v1/products/${p.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok || res.status === 204) {
+        setProducts((prev) => prev.filter((x) => x.id !== p.id));
+        setTotal((prev) => Math.max(0, prev - 1));
+      }
+    } catch {
+      // silently ignore — product stays in list
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white text-sm w-full max-w-2xl">
@@ -130,12 +157,13 @@ export function ProductListCard({
                     Edit
                   </button>
 
-                  {/* Delete */}
+                  {/* Delete — calls API directly, removes from list instantly */}
                   <button
-                    onClick={() => onAction?.(`Delete product ${p.id}`)}
-                    className="text-xs px-2.5 py-1 rounded-md bg-gray-50 text-red-600 border border-red-200 hover:bg-red-50 font-medium transition-colors"
+                    onClick={() => handleDelete(p)}
+                    disabled={deletingId === p.id}
+                    className="text-xs px-2.5 py-1 rounded-md bg-gray-50 text-red-600 border border-red-200 hover:bg-red-50 font-medium transition-colors disabled:opacity-40"
                   >
-                    Delete
+                    {deletingId === p.id ? "Deleting…" : "Delete"}
                   </button>
                 </div>
               </div>
