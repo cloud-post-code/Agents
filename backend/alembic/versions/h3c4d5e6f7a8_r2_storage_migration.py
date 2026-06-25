@@ -8,7 +8,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision = "h3c4d5e6f7a8"
-down_revision = "g2b3c4d5e6f7"
+down_revision = "add_temp_images_001"
 branch_labels = None
 depends_on = None
 
