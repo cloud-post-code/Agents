@@ -4,7 +4,7 @@ from __future__ import annotations
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.deps import get_current_user
 from app.db.engine import get_db
 from app.models.product import Product, ProductImage, ProductVariant, StockAdjustment
+from app.models.temp_image import TempImage
 from app.models.user import User
 
 router = APIRouter(prefix="/products", tags=["inventory"])
@@ -484,11 +485,16 @@ async def save_product_image(
 @router.post("/{product_id}/image-upload", status_code=200)
 async def upload_product_image(
     product_id: uuid.UUID,
-    file: UploadFile = File(...),
+    file: Optional[UploadFile] = File(None),
+    temp_image_id: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Accept a multipart binary image and store as base64 in product.image_data."""
+    """Accept a multipart binary image and store as base64 in product.image_data.
+
+    Alternatively, if temp_image_id is provided and no file is supplied, copies the
+    previously stored TempImage to the product instead of reading a new upload.
+    """
     import base64 as _b64
 
     product = await db.scalar(
@@ -501,12 +507,83 @@ async def upload_product_image(
     if product is None:
         raise HTTPException(status_code=404, detail="Product not found")
 
-    contents = await file.read()
-    product.image_data = _b64.b64encode(contents).decode()
+    # If a temp_image_id is provided and there's no real file, copy from TempImage
+    file_contents: Optional[bytes] = None
+    if file is not None:
+        file_contents = await file.read()
+        if not file_contents:
+            file_contents = None
+
+    if file_contents is None and temp_image_id:
+        try:
+            temp_id = uuid.UUID(temp_image_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid temp_image_id")
+        temp_img = await db.scalar(
+            select(TempImage).where(
+                TempImage.id == temp_id,
+                TempImage.tenant_id == current_user.tenant_id,
+            )
+        )
+        if temp_img is None:
+            raise HTTPException(status_code=404, detail="Temp image not found")
+        product.image_data = temp_img.image_data
+        product.image_url = None
+        await db.commit()
+        await db.refresh(product)
+        return {"status": "ok", "product_id": str(product.id)}
+
+    if file_contents is None:
+        raise HTTPException(status_code=422, detail="No file or temp_image_id provided")
+
+    product.image_data = _b64.b64encode(file_contents).decode()
     product.image_url = None
     await db.commit()
     await db.refresh(product)
     return {"status": "ok", "product_id": str(product.id)}
+
+
+class ImageFromTempRequest(BaseModel):
+    temp_image_id: str
+
+
+@router.patch("/{product_id}/image-from-temp", status_code=200)
+async def image_from_temp(
+    product_id: uuid.UUID,
+    body: ImageFromTempRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Copy a previously stored TempImage to product.image_data."""
+    try:
+        temp_id = uuid.UUID(body.temp_image_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid temp_image_id")
+
+    product = await db.scalar(
+        select(Product).where(
+            Product.id == product_id,
+            Product.tenant_id == current_user.tenant_id,
+            Product.deleted_at.is_(None),
+        )
+    )
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    temp_img = await db.scalar(
+        select(TempImage).where(
+            TempImage.id == temp_id,
+            TempImage.tenant_id == current_user.tenant_id,
+        )
+    )
+    if temp_img is None:
+        raise HTTPException(status_code=404, detail="Temp image not found")
+
+    product.image_data = temp_img.image_data
+    product.image_url = None
+    await db.commit()
+    await db.refresh(product)
+    return {"status": "ok", "product_id": str(product_id)}
 
 
 async def _check_low_stock(db: AsyncSession, product: Product, tenant_id: uuid.UUID):

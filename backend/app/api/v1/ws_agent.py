@@ -17,6 +17,7 @@ from app.agents.prompts import VALID_ROLES
 from app.core.config import settings
 from app.core.security import decode_token
 from app.models.agent import AgentMessage, AgentSession
+from app.models.temp_image import TempImage
 
 router = APIRouter(tags=["ws-agent"])
 
@@ -98,12 +99,35 @@ async def _handle_image_upload(
     """Call vision AI to extract product info, emit a confirm_product card."""
     result = await _extract_single_image(image_url, filename, tenant_id_str, db)
 
+    # Persist the image into temp_images so the frontend can reference it by id
+    import re as _re_uri
+    data_url = image_url
+    image_id: str | None = None
+    if image_url.startswith("data:"):
+        try:
+            header, raw_b64 = image_url.split(",", 1)
+            content_type = header.split(";")[0].replace("data:", "") or "image/jpeg"
+            temp_image = TempImage(
+                tenant_id=uuid.UUID(tenant_id_str),
+                image_data=raw_b64,
+                content_type=content_type,
+            )
+            db.add(temp_image)
+            await db.commit()
+            await db.refresh(temp_image)
+            data_url = f"data:{content_type};base64,{raw_b64}"
+            image_id = str(temp_image.id)
+        except Exception as _exc:
+            _logger.warning("[_handle_image_upload] failed to persist TempImage: %s", _exc)
+
     props: dict = {
-        "image_url": image_url,
+        "image_url": data_url,
         "name": result.get("name", ""),
         "description": result.get("description", ""),
         "variants": result.get("variants", []),
     }
+    if image_id is not None:
+        props["image_id"] = image_id
     if price is not None:
         props["price"] = price
     if quantity is not None:

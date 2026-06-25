@@ -11,6 +11,7 @@ interface VariantItem {
 
 export interface ConfirmProductCardProps {
   image_url?: string;
+  image_id?: string;
   name?: string;
   description?: string;
   variants?: VariantItem[];
@@ -98,31 +99,44 @@ export function ConfirmProductCard(props: ConfirmProductCardProps) {
         body: JSON.stringify(body),
       });
 
-      // Step 2: save image separately as multipart to avoid large JSON body
+      // Step 2: save image separately to avoid large JSON body
       if (activeImageUrl && created?.id) {
         try {
           const apiBase = getApiBase();
-          let blob: Blob;
-          if (activeImageUrl.startsWith("data:")) {
-            // Convert data URI → binary blob
-            const [header, b64] = activeImageUrl.split(",", 2);
-            const mime = header.replace("data:", "").replace(";base64", "");
-            const binary = atob(b64);
-            const bytes = new Uint8Array(binary.length);
-            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-            blob = new Blob([bytes], { type: mime });
+          if (props.image_id) {
+            // Fast path: reference the already-stored temp image by id
+            await fetch(`${apiBase}/api/v1/products/${created.id}/image-from-temp`, {
+              method: "PATCH",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({ temp_image_id: props.image_id }),
+            });
           } else {
-            // HTTP URL — fetch it then upload as blob
-            const r = await fetch(activeImageUrl);
-            blob = await r.blob();
+            // Fallback: upload the image as multipart binary
+            let blob: Blob;
+            if (activeImageUrl.startsWith("data:")) {
+              // Convert data URI → binary blob
+              const [header, b64] = activeImageUrl.split(",", 2);
+              const mime = header.replace("data:", "").replace(";base64", "");
+              const binary = atob(b64);
+              const bytes = new Uint8Array(binary.length);
+              for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+              blob = new Blob([bytes], { type: mime });
+            } else {
+              // HTTP URL — fetch it then upload as blob
+              const r = await fetch(activeImageUrl);
+              blob = await r.blob();
+            }
+            const form = new FormData();
+            form.append("file", blob, "product-image.jpg");
+            await fetch(`${apiBase}/api/v1/products/${created.id}/image-upload`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}` },
+              body: form,
+            });
           }
-          const form = new FormData();
-          form.append("file", blob, "product-image.jpg");
-          await fetch(`${apiBase}/api/v1/products/${created.id}/image-upload`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${token}` },
-            body: form,
-          });
         } catch {
           // image save failed — product still saved, don't block
         }

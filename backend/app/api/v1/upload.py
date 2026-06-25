@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user, get_db
 from app.models.agent import AgentMessage, AgentSession
+from app.models.temp_image import TempImage
 from app.models.user import User
 from app.services.ingestion import ProductIngestionService
 
@@ -324,6 +325,69 @@ async def upload_csv_for_ingestion(
             "csv_base64": csv_base64,
             "message": "CSV uploaded. Set auto_ingest=true to process.",
         }
+
+
+@router.post("/image-store")
+async def store_temp_image(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Store an image in the temp_images table for later use during product creation.
+    Returns image_id and a data_url for immediate display.
+    """
+    if not _is_image(file):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported file type. Upload images (JPEG, PNG, WebP).",
+        )
+
+    contents = await file.read()
+    if len(contents) > MAX_IMAGE_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Image too large. Maximum size: {MAX_IMAGE_SIZE // 1024 // 1024}MB",
+        )
+
+    content_type = file.content_type or "image/jpeg"
+    b64 = base64.b64encode(contents).decode()
+
+    record = TempImage(
+        tenant_id=current_user.tenant_id,
+        image_data=b64,
+        content_type=content_type,
+    )
+    db.add(record)
+    await db.commit()
+    await db.refresh(record)
+
+    return {
+        "image_id": str(record.id),
+        "data_url": f"data:{content_type};base64,{b64}",
+    }
+
+
+@router.get("/image-store/{image_id}")
+async def get_temp_image(
+    image_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Retrieve a previously stored temp image by id."""
+    record = await db.scalar(
+        select(TempImage).where(
+            TempImage.id == image_id,
+            TempImage.tenant_id == current_user.tenant_id,
+        )
+    )
+    if record is None:
+        raise HTTPException(status_code=404, detail="Temp image not found")
+
+    return {
+        "image_id": str(record.id),
+        "data_url": f"data:{record.content_type};base64,{record.image_data}",
+    }
 
 
 async def _log_to_session(
