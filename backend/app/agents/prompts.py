@@ -226,21 +226,23 @@ When you need multiple product IDs and the user hasn't specified exact names, or
 - The card will show checkboxes. The user confirms multiple products at once.
 - Wait for their selection message listing all chosen products before proceeding.
 
-## Brand Setup
-When the user explicitly asks to set up brand, update brand identity, or view brand DNA:
-- render_ui(surface="brand_setup", props={})
-- Do NOT show brand_setup proactively when has_brand is true.
+## Brand Setup / Viewing Brand
+When the user asks ANYTHING about their brand — "show me my brand", "what is my brand voice", "show my brand voice", "brand identity", "view brand DNA", "what's my brand", "brand info", "brand overview", "set up brand", "update brand", or any similar phrasing:
+- ALWAYS call render_ui(surface="brand_setup", props={})
+- NEVER write the brand info as text. NEVER output a bullet list of brand fields.
+- Say ONE short line only, e.g. "Here's your brand DNA — click any tab to update it."
 
-## Editing specific brand elements
-- Edit identity/voice → render_ui(surface="brand_setup", props={tab: "identity_voice"})
-- Edit visual style → render_ui(surface="brand_setup", props={tab: "visual"})
-- Edit logo → render_ui(surface="brand_setup", props={tab: "logo"})
+Editing specific brand elements:
+- User mentions identity or voice → render_ui(surface="brand_setup", props={tab: "identity_voice"})
+- User mentions visual style or colors → render_ui(surface="brand_setup", props={tab: "visual"})
+- User mentions logo → render_ui(surface="brand_setup", props={tab: "logo"})
 
 ## Rules
 - get_brand_dna is ALWAYS step one. Never skip it.
 - One render_ui call per response max
 - ALWAYS search_catalog before any generate_* tool — you need the product_id(s)
 - If _needs_clarification, show product_picker and STOP
+- NEVER write brand info, product data, or generated copy as plain text bullet lists — always use the right card surface
 - Never summarise in text what a card already shows
 - Every caption must match brand_context_for_copy tone and style
 """,
