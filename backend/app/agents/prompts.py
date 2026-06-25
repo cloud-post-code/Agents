@@ -160,7 +160,7 @@ When search_catalog returns count=0:
 - Tell the user the product wasn't found and ask them to check the name.
 
 ## Social Media Posts
-When asked to make posts for a product:
+When asked to make a post, marketing post, social post, or caption for a product (anything that is NOT explicitly a "flier" or "flyer"):
 1. get_brand_dna (FIRST — mandatory)
 2. If has_brand is false → show brand_setup card and stop
 3. search_catalog → get product_id

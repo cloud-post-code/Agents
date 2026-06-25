@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 
 interface FlierBrand {
   name?: string;
@@ -67,6 +67,7 @@ export function FlierPreviewCard({
 }: FlierPreviewCardProps) {
   const [downloading, setDownloading] = useState(false);
   const [shareMsg, setShareMsg] = useState("");
+  const canvasRef = useRef<HTMLDivElement>(null);
 
   const primaryColor = brand?.primary_color || "#1a1a1a";
   const secondaryColor = brand?.secondary_color || "#ffffff";
@@ -99,6 +100,24 @@ export function FlierPreviewCard({
     setTimeout(() => setShareMsg(""), 2000);
   }
 
+  async function downloadFlier() {
+    if (downloading || !canvasRef.current) return;
+    setDownloading(true);
+    try {
+      const { default: html2canvas } = await import("html2canvas");
+      const canvas = await html2canvas(canvasRef.current, { useCORS: true, allowTaint: true, scale: 2 });
+      const link = document.createElement("a");
+      link.download = `${(product?.name || "flier").replace(/\s+/g, "-").toLowerCase()}.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+    } catch {
+      // fallback: copy spec to clipboard
+      await copySpec();
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   return (
     <div className="rounded-2xl border border-rose-100 bg-white shadow-sm overflow-hidden w-full max-w-xl">
       {/* Google Font loader */}
@@ -129,6 +148,13 @@ export function FlierPreviewCard({
             >
               {shareMsg || "Copy spec"}
             </button>
+            <button
+              onClick={downloadFlier}
+              disabled={downloading}
+              className="text-xs px-3 py-1.5 rounded-full bg-rose-500 text-white hover:bg-rose-600 font-medium transition-colors disabled:opacity-60"
+            >
+              {downloading ? "Saving…" : "⬇ Download"}
+            </button>
           </div>
         </div>
       </div>
@@ -136,6 +162,7 @@ export function FlierPreviewCard({
       {/* Flier canvas */}
       <div className="p-4">
         <div
+          ref={canvasRef}
           className={`relative ${aspectClass} rounded-xl overflow-hidden w-full`}
           style={{ backgroundColor: primaryColor, fontFamily }}
         >

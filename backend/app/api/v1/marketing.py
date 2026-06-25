@@ -223,7 +223,9 @@ def _build_flier_spec(
             "name": product.name,
             "description": product.description,
             "price": float(product.price) if product.price else None,
-            "image_url": product.image_url,
+            "image_url": product.image_url or (
+                f"data:image/jpeg;base64,{product.image_data}" if product.image_data else None
+            ),
             "sku": product.sku,
         },
         "copy": {
