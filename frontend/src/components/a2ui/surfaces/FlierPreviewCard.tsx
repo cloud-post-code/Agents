@@ -178,12 +178,12 @@ export function FlierPreviewCard({
           {ai_image_url ? (
             <div className={`relative ${format === "landscape" ? "" : format === "portrait" ? "aspect-[4/5]" : "aspect-square"}`}
               style={format === "landscape" ? { minHeight: 320 } : {}}>
-              {/* Full-bleed AI image */}
+              {/* Full-bleed AI image — data URI, no crossOrigin needed */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={ai_image_url}
                 alt="AI-generated flier"
                 className="absolute inset-0 w-full h-full object-cover"
-                crossOrigin="anonymous"
               />
               {/* Gradient overlay for text legibility */}
               <div

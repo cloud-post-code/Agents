@@ -228,11 +228,11 @@ export function MultiFlierPreviewCard({
           {/* AI full-bleed background */}
           {ai_image_url && (
             <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={ai_image_url}
                 alt="AI-generated collection"
                 className="absolute inset-0 w-full h-full object-cover"
-                crossOrigin="anonymous"
               />
               <div
                 className="absolute inset-0"

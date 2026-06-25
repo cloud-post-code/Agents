@@ -240,12 +240,19 @@ def _build_flier_spec(
 
 
 async def _generate_dalle_image(prompt: str, size: str = "1024x1024") -> str | None:
-    """Call DALL-E 3 with the given prompt and return the image URL. Returns None on failure."""
+    """
+    Call DALL-E 3, then download the image and return a base64 data URI.
+    This avoids CORS issues and expiring OpenAI CDN URLs in the browser.
+    Returns None on failure.
+    """
     api_key = os.environ.get("OPENAI_API_KEY", "")
     if not api_key or api_key.startswith("sk-test"):
         return None
     try:
         from openai import AsyncOpenAI
+        import httpx
+        import base64
+
         client = AsyncOpenAI(api_key=api_key)
         resp = await client.images.generate(
             model="dall-e-3",
@@ -254,7 +261,18 @@ async def _generate_dalle_image(prompt: str, size: str = "1024x1024") -> str | N
             quality="standard",
             n=1,
         )
-        return resp.data[0].url
+        image_url = resp.data[0].url
+        if not image_url:
+            return None
+
+        # Download and convert to base64 data URI so it works in any browser
+        async with httpx.AsyncClient(timeout=30) as http:
+            dl = await http.get(image_url)
+            dl.raise_for_status()
+            content_type = dl.headers.get("content-type", "image/png").split(";")[0]
+            b64 = base64.b64encode(dl.content).decode()
+            return f"data:{content_type};base64,{b64}"
+
     except Exception as exc:
         logger.warning(f"DALL-E generation failed: {exc}")
         return None
