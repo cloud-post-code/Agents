@@ -8,6 +8,7 @@ interface ProductResult {
   sku?: string;
   price?: number;
   stockQty?: number;
+  image_url?: string;
 }
 
 export interface SearchProductCardProps {
@@ -50,22 +51,34 @@ export function SearchProductCard({ query, results = [], onSelect }: SearchProdu
                 : "bg-white border-amber-100 hover:border-amber-300 hover:bg-amber-100"
             }`}
           >
-            <div className="flex items-center justify-between">
-              <span className="font-medium text-gray-800 text-xs">{product.name}</span>
-              {selected === product.id && (
-                <span className="text-amber-700 text-xs font-bold">✓</span>
+            <div className="flex items-center gap-2.5">
+              {product.image_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={product.image_url} alt={product.name} className="w-10 h-10 rounded-lg object-cover shrink-0" />
+              ) : (
+                <div className="w-10 h-10 rounded-lg bg-gray-100 shrink-0 flex items-center justify-center">
+                  <span className="text-lg opacity-30">📦</span>
+                </div>
               )}
-            </div>
-            <div className="flex gap-3 mt-0.5">
-              {product.sku && (
-                <span className="text-xs text-gray-400">SKU: {product.sku}</span>
-              )}
-              {product.price !== undefined && (
-                <span className="text-xs text-gray-500">${product.price.toFixed(2)}</span>
-              )}
-              {product.stockQty !== undefined && (
-                <span className="text-xs text-gray-400">{product.stockQty} in stock</span>
-              )}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium text-gray-800 text-xs truncate">{product.name}</span>
+                  {selected === product.id && (
+                    <span className="text-amber-700 text-xs font-bold shrink-0 ml-1">✓</span>
+                  )}
+                </div>
+                <div className="flex gap-3 mt-0.5 flex-wrap">
+                  {product.sku && (
+                    <span className="text-xs text-gray-400">SKU: {product.sku}</span>
+                  )}
+                  {product.price !== undefined && (
+                    <span className="text-xs text-gray-500">${product.price.toFixed(2)}</span>
+                  )}
+                  {product.stockQty !== undefined && (
+                    <span className="text-xs text-gray-400">{product.stockQty} in stock</span>
+                  )}
+                </div>
+              </div>
             </div>
           </button>
         ))}

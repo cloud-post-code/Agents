@@ -12,6 +12,7 @@ export interface EditProductCardProps {
   stockQty?: number;
   description?: string;
   tags?: string[];
+  image_url?: string;
 }
 
 export function EditProductCard(props: EditProductCardProps) {
@@ -21,6 +22,7 @@ export function EditProductCard(props: EditProductCardProps) {
   const [price, setPrice] = useState(props.price !== undefined ? String(props.price) : "");
   const [stockQty, setStockQty] = useState(props.stockQty !== undefined ? String(props.stockQty) : "");
   const [description, setDescription] = useState(props.description ?? "");
+  const imageUrl = props.image_url;
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,6 +54,21 @@ export function EditProductCard(props: EditProductCardProps) {
 
   return (
     <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm w-full max-w-sm">
+      {/* Product image header */}
+      {imageUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={imageUrl}
+          alt={name || "Product"}
+          className="w-full max-h-40 object-contain bg-gray-50 rounded-xl mb-3"
+        />
+      )}
+      {!imageUrl && (
+        <div className="w-full h-20 bg-gray-50 rounded-xl mb-3 flex items-center justify-center">
+          <span className="text-3xl opacity-20">📦</span>
+        </div>
+      )}
+
       <div className="flex items-center gap-2 mb-3">
         <span className="text-blue-700 font-semibold">{saved ? "✓ Saved" : "Edit Product"}</span>
         {!saved && (

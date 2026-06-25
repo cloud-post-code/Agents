@@ -79,19 +79,19 @@ When search_catalog returns count=0:
 
 ## Editing products
 - When the user describes a product they want to edit → ALWAYS call search_catalog first, then:
-  - If _exact_match or single result: render_ui(surface="edit_product", props={id, name, sku, price, stockQty, description, tags})
+  - If _exact_match or single result: render_ui(surface="edit_product", props={id, name, sku, price, stockQty, description, tags, image_url})
   - If _needs_clarification: show product_picker card and stop
 - The card lets them edit inline and save directly.
 
 ## Removing products
 - When the user wants to remove/delete a product → ALWAYS call search_catalog first, then:
-  - If _exact_match or single result: render_ui(surface="remove_product", props={id, name, sku})
+  - If _exact_match or single result: render_ui(surface="remove_product", props={id, name, sku, image_url})
   - If _needs_clarification: show product_picker card and stop
 - The card requires them to type the product name before deleting — don't skip this.
 
 ## Product variants
 - When the user asks about variants of a product → call search_catalog to get the product, then:
-  render_ui(surface="product_variants", props={productId, productName, variants: [{id, name, sku, stockQty, price}]})
+  render_ui(surface="product_variants", props={productId, productName, productImageUrl: <product image_url>, variants: [{id, name, sku, stockQty, price}]})
 
 ## Product images
 - When the user asks about or wants to manage a product's images → call search_catalog to get the product, then:
@@ -112,8 +112,8 @@ When the user says "add X to stock", "remove X from stock", "increase/decrease s
 
 ## Product list actions
 When showing a product list with render_ui(surface="product_list", ...) — the card now includes Edit, Delete, +Stock and -Stock action buttons on each row. When the user clicks those buttons in the card, they will send a follow-up message like:
-- "Edit product [ID]" → call search_catalog with that ID, then render_ui(surface="edit_product", ...)
-- "Delete product [ID]" → call search_catalog, then render_ui(surface="remove_product", ...)
+- "Edit product [ID]" → call search_catalog with that ID, then render_ui(surface="edit_product", props={id, name, sku, price, stockQty, description, tags, image_url})
+- "Delete product [ID]" → call search_catalog, then render_ui(surface="remove_product", props={id, name, sku, image_url})
 - "Increase stock [ID] by [N]" → call update_product_stock(product_id, delta=N)
 - "Decrease stock [ID] by [N]" → call update_product_stock(product_id, delta=-N)
 Handle these exactly as you would a normal user request for those actions.

@@ -15,6 +15,7 @@ interface Variant {
 export interface VariantCardProps {
   productId: string;
   productName?: string;
+  productImageUrl?: string;
   variants?: Variant[];
 }
 
@@ -106,14 +107,24 @@ function VariantRow({
   );
 }
 
-export function VariantCard({ productId, productName, variants = [] }: VariantCardProps) {
+export function VariantCard({ productId, productName, productImageUrl, variants = [] }: VariantCardProps) {
   return (
     <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm w-full max-w-sm">
-      <div className="mb-3">
-        <p className="text-indigo-700 font-semibold">Product Variants</p>
-        {productName && (
-          <p className="text-xs text-gray-500 mt-0.5">{productName}</p>
+      <div className="flex items-center gap-3 mb-3">
+        {productImageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={productImageUrl} alt={productName || "Product"} className="w-12 h-12 rounded-lg object-cover shrink-0" />
+        ) : (
+          <div className="w-12 h-12 rounded-lg bg-indigo-100 shrink-0 flex items-center justify-center">
+            <span className="text-xl opacity-40">📦</span>
+          </div>
         )}
+        <div>
+          <p className="text-indigo-700 font-semibold">Product Variants</p>
+          {productName && (
+            <p className="text-xs text-gray-500 mt-0.5">{productName}</p>
+          )}
+        </div>
       </div>
 
       {variants.length === 0 && (

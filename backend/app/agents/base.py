@@ -767,6 +767,28 @@ class ArtisanAgent:
             surface = args.get("component", args.get("surface", "unknown"))
             props = args.get("props", {})
 
+            # Re-attach image_url from DB for surfaces that show a single product.
+            # The LLM often omits or truncates the image field when building props.
+            if surface in ("edit_product", "remove_product", "product_variants") and db is not None and tenant_id:
+                try:
+                    product_id_str = props.get("id") or props.get("productId") or ""
+                    if product_id_str:
+                        from app.models.product import Product as _Prod
+                        from sqlalchemy import select as _sel
+                        p = await db.scalar(
+                            _sel(_Prod).where(
+                                _Prod.id == uuid.UUID(str(product_id_str)),
+                                _Prod.tenant_id == uuid.UUID(tenant_id),
+                            )
+                        )
+                        if p:
+                            img = p.image_url
+                            if not img and p.image_data:
+                                img = f"data:image/jpeg;base64,{p.image_data}"
+                            props = {**props, "image_url": img, "productImageUrl": img}
+                except Exception as exc:
+                    logger.warning(f"[render_ui/{surface}] image re-fetch failed: {exc}")
+
             # For product_list, re-fetch products from DB to ensure image_url is always populated.
             # The LLM often strips large fields (base64, long URLs) when constructing props.
             if surface == "product_list" and db is not None and tenant_id:
