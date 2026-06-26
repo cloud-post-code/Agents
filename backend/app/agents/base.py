@@ -86,8 +86,8 @@ class ArtisanAgent:
             # Hard truncate to ~2k tokens per message
             return cleaned[:8000] + '…' if len(cleaned) > 8000 else cleaned
 
-        # Keep only the most recent 30 messages to stay within context limits
-        trimmed_history = history[-30:] if len(history) > 30 else history
+        # Keep only the most recent 10 messages to stay within context limits
+        trimmed_history = history[-10:] if len(history) > 10 else history
 
         messages = [SystemMessage(content=self.system_prompt)]
         for msg in trimmed_history:
