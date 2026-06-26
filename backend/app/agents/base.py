@@ -78,13 +78,25 @@ class ArtisanAgent:
         from app.agents.fake_llm import FakeChatModel
         is_fake = isinstance(self.llm, FakeChatModel)
 
+        import re as _re_b64
+        _b64_pattern = _re_b64.compile(r'data:[^;]+;base64,[A-Za-z0-9+/=\n]{100,}', _re_b64.DOTALL)
+
+        def _clean(text: str) -> str:
+            return _b64_pattern.sub('', text or '').strip()
+
+        # Keep only the most recent 30 messages to stay within context limits
+        trimmed_history = history[-30:] if len(history) > 30 else history
+
         messages = [SystemMessage(content=self.system_prompt)]
-        for msg in history:
+        for msg in trimmed_history:
+            content = _clean(msg["content"])
+            if not content:
+                continue
             if msg["role"] == "user":
-                messages.append(HumanMessage(content=msg["content"]))
+                messages.append(HumanMessage(content=content))
             elif msg["role"] == "assistant":
-                messages.append(AIMessage(content=msg["content"]))
-        messages.append(HumanMessage(content=user_message))
+                messages.append(AIMessage(content=content))
+        messages.append(HumanMessage(content=_clean(user_message) or user_message))
 
         tool_map = self._build_tool_map()
 
