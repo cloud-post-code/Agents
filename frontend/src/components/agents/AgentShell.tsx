@@ -499,6 +499,25 @@ export function AgentShell({ agent }: AgentShellProps) {
     }
   };
 
+  // Arm a 45s safety timeout to unlock the input if the agent never responds
+  const stopStreaming = () => {
+    if (streamingTimeoutRef.current) clearTimeout(streamingTimeoutRef.current);
+    streamingTimeoutRef.current = null;
+    setStreaming(false);
+  };
+
+  const startStreaming = () => {
+    if (streamingTimeoutRef.current) clearTimeout(streamingTimeoutRef.current);
+    setStreaming(true);
+    streamingTimeoutRef.current = setTimeout(() => {
+      stopStreaming();
+      pendingRef.current = "";
+      setMessages((prev) =>
+        prev.map((m) => (m.id === "streaming" ? { ...m, id: crypto.randomUUID() } : m))
+      );
+    }, 45000);
+  };
+
   const handleProductPicked = (product: ProductPickerItem) => {
     if (!wsRef.current || wsRef.current.readyState !== 1) return;
     const msg = `I meant the product: "${product.name}" (ID: ${product.id}). Please continue with this product.`;
@@ -516,25 +535,6 @@ export function AgentShell({ agent }: AgentShellProps) {
     setMessages((prev) => [...prev, { role: "user", content: msg, id: crypto.randomUUID() }]);
     startStreaming();
     wsRef.current.send(JSON.stringify({ type: "message", content: msg }));
-  };
-
-  // Arm a 45s safety timeout to unlock the input if the agent never responds
-  const startStreaming = () => {
-    if (streamingTimeoutRef.current) clearTimeout(streamingTimeoutRef.current);
-    setStreaming(true);
-    streamingTimeoutRef.current = setTimeout(() => {
-      stopStreaming();
-      pendingRef.current = "";
-      setMessages((prev) =>
-        prev.map((m) => (m.id === "streaming" ? { ...m, id: crypto.randomUUID() } : m))
-      );
-    }, 45000);
-  };
-
-  const stopStreaming = () => {
-    if (streamingTimeoutRef.current) clearTimeout(streamingTimeoutRef.current);
-    streamingTimeoutRef.current = null;
-    setStreaming(false);
   };
 
   const handleAction = (message: string) => {
