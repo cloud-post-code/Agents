@@ -151,18 +151,24 @@ def generate_social_post(
     platform: str = "instagram",
     post_type: str = "feed_post",
     creative_brief: str = "",
+    previous_caption: str = "",
 ) -> dict:
     """
     Generate an expert social media caption for a single product on one platform.
+    Uses two AI calls: first analyzes the product photo with vision, then writes the caption.
+
+    For iteration: pass the previous caption in previous_caption and put edit instructions
+    in creative_brief — the new caption will incorporate the requested changes.
 
     Args:
         product_id: UUID of the product from the catalog
         platform: Target platform — instagram, facebook, tiktok, twitter, pinterest
         post_type: Content format — feed_post, story, reel, carousel
-        creative_brief: Optional creative direction or special offer to highlight
+        creative_brief: Creative direction, special offer, or edit instructions for iteration
+        previous_caption: Previous caption to iterate on (leave empty for a fresh generation)
 
     Returns:
-        Dict with caption, product details, and platform info
+        Dict with caption, product details, platform info, and image_analysis
     """
     return {"status": "stub", "message": "handled by _execute_tool"}
 
@@ -173,18 +179,24 @@ def generate_social_post_batch(
     platforms: list = ["instagram", "facebook", "tiktok"],  # noqa: B006
     post_type: str = "feed_post",
     creative_brief: str = "",
+    previous_caption: str = "",
 ) -> dict:
     """
     Generate captions for multiple social platforms at once for a single product.
+    Uses two AI calls: one vision call for the product photo, then one caption per platform.
+
+    For iteration: pass the previous caption in previous_caption and put edit instructions
+    in creative_brief — all platform captions will incorporate the requested changes.
 
     Args:
         product_id: UUID of the product
         platforms: List of platforms to generate for
         post_type: Content format for all platforms
-        creative_brief: Optional creative direction
+        creative_brief: Creative direction or edit instructions for iteration
+        previous_caption: Previous caption to iterate on (leave empty for fresh generation)
 
     Returns:
-        Dict with a 'posts' array, each containing platform and caption
+        Dict with a 'posts' array, each containing platform and caption, plus image_analysis
     """
     return {"status": "stub", "message": "handled by _execute_tool"}
 
@@ -279,7 +291,11 @@ def generate_flier_image(
 ) -> dict:
     """
     Generate a photorealistic AI marketing image for a single-product flier using DALL-E 3.
+    Uses two AI calls: first analyzes the product photo with vision, then generates the flier image.
     Returns a flier spec with an ai_image_url field containing the generated image.
+
+    For iteration: adjust the headline, subheadline, promo_text, or call_to_action to regenerate
+    with updated copy — the vision analysis of the product photo is always re-run fresh.
 
     Args:
         product_id: UUID of the product
@@ -290,7 +306,7 @@ def generate_flier_image(
         format: square, portrait, or landscape
 
     Returns:
-        Full flier spec with ai_image_url added
+        Full flier spec with ai_image_url and image_analysis added
     """
     return {"status": "stub", "message": "handled by _execute_tool"}
 

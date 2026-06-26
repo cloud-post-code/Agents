@@ -562,7 +562,23 @@ class ArtisanAgent:
 
                 if tool_name == "generate_social_post":
                     product = await _get_product(args.get("product_id", ""), uuid.UUID(tenant_id), db)
-                    from app.api.v1.marketing import _generate_caption, _product_image
+                    from app.api.v1.marketing import _generate_caption, _product_image, _analyze_product_image
+                    import os as _os
+                    _api_key = _os.environ.get("OPENAI_API_KEY", "")
+                    product_img_url = _product_image(product)
+
+                    # Call 1: vision — send product info + photo to GPT-4o in one request
+                    image_analysis = ""
+                    if product_img_url and _api_key and not _api_key.startswith("sk-test"):
+                        image_analysis = await _analyze_product_image(
+                            title=product.name,
+                            desc=product.description or "",
+                            image_url=product_img_url,
+                            api_key=_api_key,
+                        )
+
+                    # Call 2: caption — use vision output + previous caption for iteration
+                    previous_caption = args.get("previous_caption", "")
                     caption = await _generate_caption(
                         title=product.name,
                         desc=product.description or "",
@@ -570,20 +586,23 @@ class ArtisanAgent:
                         post_type=args.get("post_type", "feed_post"),
                         creative_brief=args.get("creative_brief", ""),
                         brand=brand,
+                        image_analysis=image_analysis,
+                        previous_caption=previous_caption,
                     )
                     return {
                         "product_id": args.get("product_id"),
                         "product_name": product.name,
-                        "product_image_url": _product_image(product),
+                        "product_image_url": product_img_url,
                         "platform": args.get("platform", "instagram"),
                         "post_type": args.get("post_type", "feed_post"),
                         "caption": caption,
                         "brand_name": brand.brand_name if brand else None,
+                        "image_analysis": image_analysis,
                         "products": [{
                             "id": str(product.id),
                             "name": product.name,
                             "price": float(product.price) if product.price else None,
-                            "image_url": _product_image(product),
+                            "image_url": product_img_url,
                             "description": product.description,
                             "sku": product.sku,
                             "stock_qty": product.stock_qty,
@@ -592,10 +611,26 @@ class ArtisanAgent:
 
                 elif tool_name == "generate_social_post_batch":
                     import asyncio
+                    import os as _os
                     product = await _get_product(args.get("product_id", ""), uuid.UUID(tenant_id), db)
-                    from app.api.v1.marketing import _generate_caption, PLATFORM_LABELS, _product_image
+                    from app.api.v1.marketing import _generate_caption, PLATFORM_LABELS, _product_image, _analyze_product_image
                     platforms = args.get("platforms", ["instagram", "facebook", "tiktok"])
+                    product_img_url = _product_image(product)
+                    _api_key = _os.environ.get("OPENAI_API_KEY", "")
 
+                    # Call 1: single vision call for the product photo (shared across all platforms)
+                    image_analysis = ""
+                    if product_img_url and _api_key and not _api_key.startswith("sk-test"):
+                        image_analysis = await _analyze_product_image(
+                            title=product.name,
+                            desc=product.description or "",
+                            image_url=product_img_url,
+                            api_key=_api_key,
+                        )
+
+                    previous_caption = args.get("previous_caption", "")
+
+                    # Call 2: one caption per platform using the shared vision analysis
                     async def _gen(p):
                         cap = await _generate_caption(
                             title=product.name,
@@ -604,6 +639,8 @@ class ArtisanAgent:
                             post_type=args.get("post_type", "feed_post"),
                             creative_brief=args.get("creative_brief", ""),
                             brand=brand,
+                            image_analysis=image_analysis,
+                            previous_caption=previous_caption,
                         )
                         return {"platform": p, "platform_label": PLATFORM_LABELS.get(p, p), "caption": cap}
 
@@ -611,12 +648,13 @@ class ArtisanAgent:
                     return {
                         "product_id": args.get("product_id"),
                         "product_name": product.name,
-                        "product_image_url": _product_image(product),
+                        "product_image_url": product_img_url,
+                        "image_analysis": image_analysis,
                         "products": [{
                             "id": str(product.id),
                             "name": product.name,
                             "price": float(product.price) if product.price else None,
-                            "image_url": _product_image(product),
+                            "image_url": product_img_url,
                             "description": product.description,
                             "sku": product.sku,
                             "stock_qty": product.stock_qty,
@@ -718,8 +756,10 @@ class ArtisanAgent:
                     return spec
 
                 elif tool_name == "generate_flier_image":
+                    import os as _os
                     from app.api.v1.marketing import (
                         _build_flier_spec, _generate_dalle_image, _flier_dalle_prompt,
+                        _analyze_product_image, _product_image,
                     )
                     product = await _get_product(args.get("product_id", ""), uuid.UUID(tenant_id), db)
                     fmt = args.get("format", "square")
@@ -739,6 +779,20 @@ class ArtisanAgent:
                     headline = spec["copy"]["headline"]
                     imagery_style = spec["style"].get("imagery_style", "Product-focused lifestyle")
                     background_style = spec["style"].get("background_style", "Clean white background")
+                    _api_key = _os.environ.get("OPENAI_API_KEY", "")
+                    product_img_url = _product_image(product)
+
+                    # Call 1: vision — send product info + photo to GPT-4o in one request
+                    image_analysis = ""
+                    if product_img_url and _api_key and not _api_key.startswith("sk-test"):
+                        image_analysis = await _analyze_product_image(
+                            title=product.name,
+                            desc=product.description or "",
+                            image_url=product_img_url,
+                            api_key=_api_key,
+                        )
+
+                    # Call 2: DALL-E — use vision analysis for a richer, photo-informed prompt
                     prompt = _flier_dalle_prompt(
                         brand_name=spec["brand"]["name"],
                         product_name=product.name,
@@ -748,9 +802,11 @@ class ArtisanAgent:
                         secondary_color=secondary,
                         imagery_style=imagery_style,
                         background_style=background_style,
+                        image_analysis=image_analysis,
                     )
                     ai_image_url = await _generate_dalle_image(prompt, size=dalle_size)
                     spec["ai_image_url"] = ai_image_url
+                    spec["image_analysis"] = image_analysis
                     spec["_rendered"] = True
                     spec["_instruction"] = (
                         "The flier card has already been rendered in the UI automatically. "
@@ -760,8 +816,11 @@ class ArtisanAgent:
                     return spec
 
                 elif tool_name == "generate_multi_flier_image":
+                    import asyncio as _asyncio2
+                    import os as _os
                     from app.api.v1.marketing import (
                         _build_multi_flier_spec, _generate_dalle_image, _multi_flier_dalle_prompt,
+                        _analyze_product_image, _product_image,
                     )
                     product_ids = args.get("product_ids", [])
                     products_fetched = []
@@ -785,6 +844,24 @@ class ArtisanAgent:
                     )
                     size_map = {"square": "1024x1024", "portrait": "1024x1792", "landscape": "1792x1024"}
                     dalle_size = size_map.get(fmt, "1792x1024")
+                    _api_key = _os.environ.get("OPENAI_API_KEY", "")
+
+                    # Call 1: vision — analyze each product photo, run in parallel
+                    async def _analyze_one(p):
+                        img = _product_image(p)
+                        if img and _api_key and not _api_key.startswith("sk-test"):
+                            return await _analyze_product_image(
+                                title=p.name,
+                                desc=p.description or "",
+                                image_url=img,
+                                api_key=_api_key,
+                            )
+                        return p.description or ""
+
+                    analyses = await _asyncio2.gather(*[_analyze_one(p) for p in products_fetched])
+                    combined_analysis = " | ".join(a for a in analyses if a)
+
+                    # Call 2: DALL-E with vision-informed prompt
                     prompt = _multi_flier_dalle_prompt(
                         brand_name=spec["brand"]["name"],
                         product_names=[p.name for p in products_fetched],
@@ -794,8 +871,11 @@ class ArtisanAgent:
                         imagery_style=spec["style"].get("imagery_style", "Product-focused lifestyle"),
                         background_style=spec["style"].get("background_style", "Clean white background"),
                     )
+                    if combined_analysis:
+                        prompt = prompt.rstrip() + f" Product visuals: {combined_analysis}"
                     ai_image_url = await _generate_dalle_image(prompt, size=dalle_size)
                     spec["ai_image_url"] = ai_image_url
+                    spec["image_analysis"] = combined_analysis
                     spec["_rendered"] = True
                     spec["_instruction"] = (
                         "The collection flier card has already been rendered in the UI automatically. "

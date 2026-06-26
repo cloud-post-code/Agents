@@ -135,6 +135,66 @@ COPYWRITER_USER = (
 )
 
 
+async def _analyze_product_image(
+    title: str,
+    desc: str,
+    image_url: str,
+    api_key: str,
+) -> str:
+    """
+    Call 1: GPT-4o vision — send product info + photo in a single request.
+    Returns a rich visual description used to enhance downstream AI calls.
+    """
+    from openai import AsyncOpenAI
+
+    client = AsyncOpenAI(api_key=api_key)
+
+    # Build the image content block: data URIs and https URLs are both supported
+    image_block: dict = {"type": "image_url", "image_url": {"url": image_url, "detail": "high"}}
+
+    try:
+        resp = await client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        image_block,
+                        {
+                            "type": "text",
+                            "text": (
+                                f"Product: {title}\n"
+                                f"Description: {desc or 'Not provided'}\n\n"
+                                "Analyze this product photo and describe in 2-3 sentences: "
+                                "the visual appearance (colors, texture, finish, shape), "
+                                "the mood or aesthetic it conveys, and what makes it appealing. "
+                                "Be specific and sensory. This will be used to write marketing copy."
+                            ),
+                        },
+                    ],
+                }
+            ],
+            max_tokens=200,
+        )
+        return (resp.choices[0].message.content or "").strip()
+    except Exception as exc:
+        logger.warning(f"Vision analysis failed: {exc}")
+        return desc or ""
+
+
+COPYWRITER_USER_WITH_VISION = (
+    "Channel: {platform_label}\n"
+    "Format: {post_type_name}\n\n"
+    "### Product name\n{title}\n\n"
+    "### Product description (catalog)\n{desc}\n\n"
+    "### Visual analysis of product photo\n{image_analysis}\n\n"
+    "### Brand context\n{brand_context}\n\n"
+    "### Brief\n{creative_block}\n\n"
+    "{iteration_block}"
+    "Write the {platform_label} {post_type_name} caption now."
+)
+
+
 async def _generate_caption(
     title: str,
     desc: str,
@@ -142,6 +202,8 @@ async def _generate_caption(
     post_type: str,
     creative_brief: str,
     brand: BrandDNA | None,
+    image_analysis: str = "",
+    previous_caption: str = "",
 ) -> str:
     api_key = os.environ.get("OPENAI_API_KEY", "")
     platform_label = PLATFORM_LABELS.get(platform, platform)
@@ -155,14 +217,42 @@ async def _generate_caption(
     client = AsyncOpenAI(api_key=api_key)
 
     system = COPYWRITER_SYSTEM.format(platform_label=platform_label)
-    user = COPYWRITER_USER.format(
-        platform_label=platform_label,
-        post_type_name=post_type_name,
-        title=title,
-        desc=desc or "No description provided.",
-        brand_context=brand_ctx or "No brand context set.",
-        creative_block=creative_brief or "Showcase the product authentically.",
-    )
+
+    iteration_block = ""
+    if previous_caption:
+        iteration_block = (
+            f"### Previous caption (iterate on this)\n{previous_caption}\n\n"
+            "Apply the brief above as edits to the previous caption. "
+            "Return an improved version that incorporates the requested changes.\n\n"
+        )
+
+    if image_analysis:
+        user = COPYWRITER_USER_WITH_VISION.format(
+            platform_label=platform_label,
+            post_type_name=post_type_name,
+            title=title,
+            desc=desc or "No description provided.",
+            image_analysis=image_analysis,
+            brand_context=brand_ctx or "No brand context set.",
+            creative_block=creative_brief or "Showcase the product authentically.",
+            iteration_block=iteration_block,
+        )
+    else:
+        user = COPYWRITER_USER.format(
+            platform_label=platform_label,
+            post_type_name=post_type_name,
+            title=title,
+            desc=desc or "No description provided.",
+            brand_context=brand_ctx or "No brand context set.",
+            creative_block=creative_brief or "Showcase the product authentically.",
+        )
+        if iteration_block:
+            user = user.replace(
+                "Write the {platform_label} {post_type_name} caption now.".format(
+                    platform_label=platform_label, post_type_name=post_type_name
+                ),
+                iteration_block + f"Write the {platform_label} {post_type_name} caption now.",
+            )
 
     try:
         resp = await client.chat.completions.create(
@@ -287,10 +377,12 @@ def _flier_dalle_prompt(
     secondary_color: str,
     imagery_style: str,
     background_style: str,
+    image_analysis: str = "",
 ) -> str:
+    visual_detail = image_analysis or product_description
     return (
         f"Create a professional marketing flier image for '{brand_name}'. "
-        f"Featured product: {product_name}. {product_description}. "
+        f"Featured product: {product_name}. {visual_detail}. "
         f"Headline text on the flier: '{headline}'. "
         f"Color palette: primary {primary_color}, accent {secondary_color}. "
         f"Style: {imagery_style}. Background: {background_style}. "
