@@ -227,60 +227,6 @@ def generate_multi_product_post(
 
 
 @tool
-def generate_flier(
-    product_id: str,
-    headline: str = "",
-    subheadline: str = "",
-    call_to_action: str = "Shop Now",
-    promo_text: str = "",
-    format: str = "square",
-) -> dict:
-    """
-    Generate a branded flier spec for a single product using the brand DNA.
-
-    Args:
-        product_id: UUID of the product
-        headline: Main headline text (defaults to product name)
-        subheadline: Supporting copy (defaults to truncated description)
-        call_to_action: Button/CTA text (e.g. 'Shop Now', 'Learn More', '20% Off Today')
-        promo_text: Optional promotional banner text (e.g. 'LIMITED TIME OFFER')
-        format: Flier dimensions — square (1080×1080), portrait (1080×1350), landscape (1200×628)
-
-    Returns:
-        Structured flier spec with brand, product, copy, and style data
-    """
-    return {"status": "stub", "message": "handled by _execute_tool"}
-
-
-@tool
-def generate_multi_product_flier(
-    product_ids: list,
-    headline: str = "",
-    subheadline: str = "",
-    call_to_action: str = "Shop Now",
-    promo_text: str = "",
-    format: str = "landscape",
-) -> dict:
-    """
-    Generate a branded flier featuring multiple products (collection/sale flier).
-
-    Use when the user wants a flier showcasing several products together.
-
-    Args:
-        product_ids: List of product UUIDs to feature (2–6 recommended)
-        headline: Main headline (e.g. 'New Arrivals', 'Holiday Sale')
-        subheadline: Supporting copy
-        call_to_action: CTA text shared across all products
-        promo_text: Optional promo badge (e.g. 'UP TO 30% OFF')
-        format: square, portrait, or landscape (landscape recommended for multi-product)
-
-    Returns:
-        Structured multi-product flier spec
-    """
-    return {"status": "stub", "message": "handled by _execute_tool"}
-
-
-@tool
 def generate_flier_image(
     product_id: str,
     headline: str = "",
@@ -353,8 +299,6 @@ MARKETER_TOOLS = SHARED_TOOLS + [
     generate_social_post,
     generate_social_post_batch,
     generate_multi_product_post,
-    generate_flier,
     generate_flier_image,
-    generate_multi_product_flier,
     generate_multi_flier_image,
 ]

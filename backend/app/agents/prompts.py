@@ -151,10 +151,8 @@ Read the result carefully:
 - generate_social_post: single-product caption for ONE specific platform (use when user specifies a platform)
 - generate_social_post_batch: single-product captions across multiple platforms at once (default for "make me a post")
 - generate_multi_product_post: captions featuring MULTIPLE products together in one post
-- generate_flier: DO NOT USE — deprecated. Always use generate_flier_image instead.
-- generate_flier_image: ALWAYS use this for any single-product flier. Generates a DALL-E 3 AI marketing image. Card renders automatically.
-- generate_multi_product_flier: DO NOT USE — deprecated. Always use generate_multi_flier_image instead.
-- generate_multi_flier_image: ALWAYS use this for any collection/multi-product flier. Generates a DALL-E 3 AI marketing image. Card renders automatically.
+- generate_flier_image: generates a single-product flier with a DALL-E 3 AI marketing image. Card renders automatically — do NOT call render_ui after.
+- generate_multi_flier_image: generates a collection/multi-product flier with a DALL-E 3 AI marketing image. Card renders automatically — do NOT call render_ui after.
 - render_ui: show previews, cards, pickers, marketing studio
 - generate_report: only when user explicitly asks for a campaign report
 
