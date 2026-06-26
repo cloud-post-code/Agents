@@ -436,19 +436,23 @@ def _flier_dalle_prompt(
     visual_detail = image_analysis or product_description
 
     parts = [
-        f"A polished marketing flier for {brand_name}.",
-        f"Product: {product_name}. {visual_detail}." if visual_detail else f"Product: {product_name}.",
-        f"Headline: {headline}." if headline else "",
-        f"Subheadline: {subheadline}." if subheadline else "",
-        f"Call to action: {call_to_action}." if call_to_action else "",
-        f"Promotion: {promo_text}." if promo_text else "",
-        f"Price: {price}." if price else "",
-        f"Brand tone: {tone}." if tone else "",
-        f"Target audience: {target_audience}." if target_audience else "",
+        f"Design a complete portrait-orientation one-page printed flier for {brand_name}.",
+        "Layout: full 8.5x11 inch page, portrait orientation, ready to print and hand out in person.",
+        "The flier must include all of the following sections from top to bottom:",
+        f"1. Brand name '{brand_name}' prominently at the top." + (f" Tagline: '{tagline}'." if tagline else ""),
+        f"2. Large bold headline: '{headline}'." if headline else "",
+        f"3. Subheadline or benefit statement: '{subheadline}'." if subheadline else "",
+        f"4. Product photo of '{product_name}' as the hero image — large, centered, high quality. {visual_detail}",
+        f"5. Price displayed clearly: {price}." if price else "",
+        f"6. Key product description or benefit for {target_audience}." if target_audience else "5. Key product description or benefit.",
+        f"7. Promotional offer: '{promo_text}'." if promo_text else "",
+        f"8. Bold call-to-action button or text: '{call_to_action}'." if call_to_action else "",
         f"Color palette: primary {primary_color}, accent {secondary_color}.",
+        f"Typography: {font_family}." if font_family else "",
         f"Visual style: {imagery_style}." if imagery_style else "",
-        f"Background: {background_style}." if background_style else "",
-        "Clean layout, strong visual hierarchy, premium commercial quality.",
+        f"Brand tone: {tone}." if tone else "",
+        "Design requirements: generous whitespace, strong visual hierarchy, premium print quality.",
+        "Make it look like a professionally designed retail flier — suitable for handing out at markets, events, or stores.",
     ]
 
     return " ".join(p for p in parts if p)

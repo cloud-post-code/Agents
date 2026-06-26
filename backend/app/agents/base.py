@@ -790,7 +790,8 @@ class ArtisanAgent:
                     )
                     logger.info("[generate_flier_image] starting for product_id=%s", args.get("product_id"))
                     product = await _get_product(args.get("product_id", ""), uuid.UUID(tenant_id), db)
-                    fmt = args.get("format", "square")
+                    # Always portrait for print-ready one-pager fliers
+                    fmt = "portrait"
                     spec = _build_flier_spec(
                         product=product,
                         brand=brand,
@@ -801,7 +802,7 @@ class ArtisanAgent:
                         fmt=fmt,
                     )
                     size_map = {"square": "1024x1024", "portrait": "1024x1792", "landscape": "1792x1024"}
-                    dalle_size = size_map.get(fmt, "1024x1024")
+                    dalle_size = "1024x1792"  # portrait for one-pager
                     primary = spec["brand"]["primary_color"]
                     secondary = spec["brand"]["secondary_color"]
                     headline = spec["copy"]["headline"]
