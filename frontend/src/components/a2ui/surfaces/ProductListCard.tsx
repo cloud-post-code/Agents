@@ -73,6 +73,7 @@ export function ProductListCard({
   const [products, setProducts] = useState(initialProducts);
   const [total, setTotal] = useState(initialTotal);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const totalPages = Math.max(1, Math.ceil(total / per_page));
   const hasPrev = page > 1;
@@ -81,6 +82,7 @@ export function ProductListCard({
   const handleDelete = async (p: ProductListItem) => {
     if (!token) return;
     setDeletingId(p.id);
+    setDeleteError(null);
     try {
       const apiBase = getApiBase();
       const res = await fetch(`${apiBase}/api/v1/products/${p.id}`, {
@@ -90,9 +92,12 @@ export function ProductListCard({
       if (res.ok || res.status === 204) {
         setProducts((prev) => prev.filter((x) => x.id !== p.id));
         setTotal((prev) => Math.max(0, prev - 1));
+      } else {
+        const body = await res.json().catch(() => ({})) as { detail?: string };
+        setDeleteError(body.detail || `Delete failed (${res.status})`);
       }
     } catch {
-      // silently ignore — product stays in list
+      setDeleteError("Network error — could not delete product.");
     } finally {
       setDeletingId(null);
     }
@@ -103,6 +108,9 @@ export function ProductListCard({
       <div className="px-4 py-3 border-b border-gray-100">
         <p className="font-semibold text-gray-800">Product Catalog</p>
         <p className="text-xs text-gray-400 mt-0.5">{total} product{total !== 1 ? "s" : ""} total</p>
+        {deleteError && (
+          <p className="text-xs text-red-600 mt-1">{deleteError}</p>
+        )}
       </div>
 
       <ul className="divide-y divide-gray-100">

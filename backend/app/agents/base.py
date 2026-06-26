@@ -106,6 +106,7 @@ class ArtisanAgent:
         llm_with_tools = self.llm.bind_tools(self.tools) if not is_fake else self.llm
 
         MAX_TOOL_ROUNDS = 5
+        _emitted_surfaces: set[str] = set()  # deduplicate a2ui surfaces within a turn
         for _ in range(MAX_TOOL_ROUNDS):
             # Accumulate the full response for this round
             full_content = ""
@@ -166,27 +167,35 @@ class ArtisanAgent:
 
                 # Emit typed events for specific tools
                 if tool_name == "render_ui":
-                    yield AgentEvent(type="a2ui", payload=result)
+                    surface_key = str(result.get("surface", ""))
+                    if surface_key not in _emitted_surfaces:
+                        _emitted_surfaces.add(surface_key)
+                        yield AgentEvent(type="a2ui", payload=result)
 
                 # Auto-emit product_list card when search_catalog is called with no query
                 # (i.e. "show all products"). The LLM sometimes skips the render_ui call.
                 if tool_name == "search_catalog" and not args.get("query", "").strip():
                     pl_surface = result.get("_product_list_surface") if isinstance(result, dict) else None
-                    if pl_surface and "error" not in result:
+                    if pl_surface and "error" not in result and "product_list" not in _emitted_surfaces:
+                        _emitted_surfaces.add("product_list")
                         yield AgentEvent(type="a2ui", payload=pl_surface)
 
                 # Flier image tools auto-emit their card so the UI appears
                 # immediately — the LLM doesn't need to make a separate render_ui call
                 if tool_name == "generate_flier_image" and "error" not in result:
-                    yield AgentEvent(type="a2ui", payload={
-                        "surface": "flier_preview",
-                        "props": result,
-                    })
+                    if "flier_preview" not in _emitted_surfaces:
+                        _emitted_surfaces.add("flier_preview")
+                        yield AgentEvent(type="a2ui", payload={
+                            "surface": "flier_preview",
+                            "props": result,
+                        })
                 if tool_name == "generate_multi_flier_image" and "error" not in result:
-                    yield AgentEvent(type="a2ui", payload={
-                        "surface": "multi_flier_preview",
-                        "props": result,
-                    })
+                    if "multi_flier_preview" not in _emitted_surfaces:
+                        _emitted_surfaces.add("multi_flier_preview")
+                        yield AgentEvent(type="a2ui", payload={
+                            "surface": "multi_flier_preview",
+                            "props": result,
+                        })
 
                 tool_result_str = json.dumps(result)
                 messages.append(ToolMessage(content=tool_result_str, tool_call_id=tc["id"]))

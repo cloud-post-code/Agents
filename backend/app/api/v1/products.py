@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
@@ -177,16 +178,16 @@ async def update_product(
     
     await db.commit()
     await db.refresh(product)
-    
+
     # Return updated product with image
     image_url = product.image_url
     if not image_url and product.image_data:
         image_url = f"data:image/jpeg;base64,{product.image_data}"
-    
+
     tags = []
     if product.extra_data and isinstance(product.extra_data, dict):
         tags = product.extra_data.get("tags", [])
-    
+
     return {
         "id": str(product.id),
         "name": product.name,
@@ -201,3 +202,33 @@ async def update_product(
         "created_at": product.created_at.isoformat(),
         "updated_at": product.updated_at.isoformat(),
     }
+
+
+@router.delete("/{product_id}", status_code=204)
+async def delete_product(
+    product_id: str,
+    tenant: CurrentTenant,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Soft-delete a product by setting deleted_at."""
+    from uuid import UUID
+    from fastapi import HTTPException, status
+
+    result = await db.execute(
+        select(Product).where(
+            Product.id == UUID(product_id),
+            Product.tenant_id == tenant.id,
+            Product.deleted_at.is_(None),
+        )
+    )
+    product = result.scalar_one_or_none()
+
+    if not product:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Product not found",
+        )
+
+    product.deleted_at = datetime.now(timezone.utc)
+    await db.commit()
