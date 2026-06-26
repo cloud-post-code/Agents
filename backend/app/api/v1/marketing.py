@@ -333,62 +333,22 @@ def _build_flier_spec(
 
 async def _generate_dalle_image(
     prompt: str,
-    size: str = "1024x1024",
+    size: str = "1024x1792",
     product_image_url: str | None = None,
 ) -> str | None:
-    """
-    Generate a flier image using gpt-image-1 (supports image inputs) when a product
-    photo is available, falling back to dall-e-3 for text-only generation.
-    Returns a base64 data URI.
-    """
+    """Generate a flier image with DALL-E 3. Returns a base64 data URI."""
     from app.core.config import settings as _cfg
     api_key = _cfg.openai_api_key or os.environ.get("OPENAI_API_KEY", "")
     if not api_key or api_key.startswith("sk-test"):
-        logger.warning("[image-gen] skipped — no valid API key (key=%s)", api_key[:8] if api_key else "MISSING")
+        logger.warning("[dalle] skipped — no valid API key")
         return None
-    logger.info("[image-gen] generating flier size=%s has_product_image=%s prompt_len=%d", size, bool(product_image_url), len(prompt))
+    logger.info("[dalle] generating size=%s prompt_len=%d", size, len(prompt))
     try:
         from openai import AsyncOpenAI
         import httpx
         import base64 as _b64
 
         client = AsyncOpenAI(api_key=api_key)
-
-        if product_image_url:
-            # gpt-image-1: accepts product photo as reference image input
-            logger.info("[image-gen] using gpt-image-1 with product image reference")
-
-            # Fetch the product image bytes to pass as input
-            async with httpx.AsyncClient(timeout=30) as http:
-                if product_image_url.startswith("data:"):
-                    header, raw = product_image_url.split(",", 1)
-                    img_bytes = _b64.b64decode(raw)
-                    img_content_type = header.split(";")[0].replace("data:", "") or "image/jpeg"
-                else:
-                    dl = await http.get(product_image_url)
-                    dl.raise_for_status()
-                    img_bytes = dl.content
-                    img_content_type = dl.headers.get("content-type", "image/jpeg").split(";")[0]
-
-            import io
-            img_file = io.BytesIO(img_bytes)
-            img_file.name = f"product.{img_content_type.split('/')[-1] or 'jpg'}"
-
-            resp = await client.images.edit(
-                model="gpt-image-1",
-                image=img_file,  # type: ignore[arg-type]
-                prompt=prompt,
-                size=size,  # type: ignore[arg-type]
-                n=1,
-            )
-            img_b64 = resp.data[0].b64_json
-            if img_b64:
-                logger.info("[image-gen] gpt-image-1 success")
-                return f"data:image/png;base64,{img_b64}"
-            logger.warning("[image-gen] gpt-image-1 returned no b64_json, falling back to dall-e-3")
-
-        # Fallback: dall-e-3 text-to-image
-        logger.info("[image-gen] using dall-e-3 text-to-image")
         resp = await client.images.generate(
             model="dall-e-3",
             prompt=prompt,
@@ -398,19 +358,17 @@ async def _generate_dalle_image(
         )
         image_url = resp.data[0].url
         if not image_url:
-            logger.error("[image-gen] dall-e-3 returned no URL")
+            logger.error("[dalle] no URL in response")
             return None
-
         async with httpx.AsyncClient(timeout=60) as http:
             dl = await http.get(image_url)
             dl.raise_for_status()
             content_type = dl.headers.get("content-type", "image/png").split(";")[0]
             b64 = _b64.b64encode(dl.content).decode()
-            logger.info("[image-gen] dall-e-3 image downloaded bytes=%d", len(dl.content))
+            logger.info("[dalle] success bytes=%d", len(dl.content))
             return f"data:{content_type};base64,{b64}"
-
     except Exception as exc:
-        logger.error("[image-gen] FAILED — type=%s msg=%s", type(exc).__name__, exc)
+        logger.error("[dalle] FAILED type=%s msg=%s", type(exc).__name__, exc)
         return None
 
 
@@ -643,6 +601,27 @@ async def generate_flier(
         fmt=body.format,
     )
     return spec
+
+
+@router.get("/test-dalle")
+async def test_dalle(
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Debug endpoint — test DALL-E connectivity and key validity."""
+    from app.core.config import settings as _cfg
+    import os as _os
+    api_key = _cfg.openai_api_key or _os.environ.get("OPENAI_API_KEY", "")
+    key_info = f"{api_key[:8]}...{api_key[-4:]}" if len(api_key) > 12 else f"len={len(api_key)}"
+    result = await _generate_dalle_image(
+        "A simple purple candle on a white background. Clean product photo.",
+        size="1024x1024",
+    )
+    return {
+        "key_found": bool(api_key and not api_key.startswith("sk-test")),
+        "key_prefix": key_info,
+        "image_generated": bool(result),
+        "image_size_bytes": len(result) if result else 0,
+    }
 
 
 @router.post("/caption")
