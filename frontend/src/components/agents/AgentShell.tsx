@@ -252,6 +252,7 @@ export function AgentShell({ agent }: AgentShellProps) {
   const pendingRef = useRef<string>("");
   const tokenRef = useRef<string | null>(null);
   const roleRef = useRef<string>(agent.role);
+  const streamingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Track whether we should auto-scroll (true for new messages, false after loading older ones)
   const shouldScrollRef = useRef(true);
 
@@ -353,6 +354,13 @@ export function AgentShell({ agent }: AgentShellProps) {
       ws.onclose = () => {
         setConnected(false);
         wsRef.current = null;
+        // If the socket closed mid-stream, unlock the input
+        stopStreaming();
+        pendingRef.current = "";
+        // Finalise any partial streaming message
+        setMessages((prev) =>
+          prev.map((m) => (m.id === "streaming" ? { ...m, id: crypto.randomUUID() } : m))
+        );
         if (!destroyed) {
           retryTimeout = setTimeout(() => {
             retryDelay = Math.min(retryDelay * 2, 15000);
@@ -362,7 +370,9 @@ export function AgentShell({ agent }: AgentShellProps) {
       };
 
       ws.onerror = () => {
-        // onclose fires after onerror — reconnect handled there
+        // Always unlock input on error — onclose fires after this
+        stopStreaming();
+        pendingRef.current = "";
       };
 
       ws.onmessage = (e) => {
@@ -415,11 +425,11 @@ export function AgentShell({ agent }: AgentShellProps) {
           setMessages((prev) =>
             prev.map((m) => (m.id === "streaming" ? { ...m, id: crypto.randomUUID() } : m))
           );
-          setStreaming(false);
+          stopStreaming();
 
         } else if (data.type === "error") {
           setError(data.message || "Agent error");
-          setStreaming(false);
+          stopStreaming();
         }
       };
 
@@ -494,7 +504,7 @@ export function AgentShell({ agent }: AgentShellProps) {
     const msg = `I meant the product: "${product.name}" (ID: ${product.id}). Please continue with this product.`;
     pendingRef.current = "";
     setMessages((prev) => [...prev, { role: "user", content: msg, id: crypto.randomUUID() }]);
-    setStreaming(true);
+    startStreaming();
     wsRef.current.send(JSON.stringify({ type: "message", content: msg }));
   };
 
@@ -504,15 +514,34 @@ export function AgentShell({ agent }: AgentShellProps) {
     const msg = `I selected these products: ${list}. Please continue with all of them.`;
     pendingRef.current = "";
     setMessages((prev) => [...prev, { role: "user", content: msg, id: crypto.randomUUID() }]);
-    setStreaming(true);
+    startStreaming();
     wsRef.current.send(JSON.stringify({ type: "message", content: msg }));
+  };
+
+  // Arm a 45s safety timeout to unlock the input if the agent never responds
+  const startStreaming = () => {
+    if (streamingTimeoutRef.current) clearTimeout(streamingTimeoutRef.current);
+    setStreaming(true);
+    streamingTimeoutRef.current = setTimeout(() => {
+      stopStreaming();
+      pendingRef.current = "";
+      setMessages((prev) =>
+        prev.map((m) => (m.id === "streaming" ? { ...m, id: crypto.randomUUID() } : m))
+      );
+    }, 45000);
+  };
+
+  const stopStreaming = () => {
+    if (streamingTimeoutRef.current) clearTimeout(streamingTimeoutRef.current);
+    streamingTimeoutRef.current = null;
+    stopStreaming();
   };
 
   const handleAction = (message: string) => {
     if (!wsRef.current || wsRef.current.readyState !== 1) return;
     pendingRef.current = "";
     setMessages((prev) => [...prev, { role: "user", content: message, id: crypto.randomUUID() }]);
-    setStreaming(true);
+    startStreaming();
     wsRef.current.send(JSON.stringify({ type: "message", content: message }));
   };
 
@@ -538,7 +567,7 @@ export function AgentShell({ agent }: AgentShellProps) {
     setError(null);
     pendingRef.current = "";
     setMessages((prev) => [...prev, { role: "user", content: displayContent, id: crypto.randomUUID() }]);
-    setStreaming(true);
+    startStreaming();
 
     // Send file metadata separately from text so backend can build the right prompt
     wsRef.current.send(JSON.stringify({
