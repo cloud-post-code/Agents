@@ -335,7 +335,8 @@ async def _generate_dalle_image(prompt: str, size: str = "1024x1024") -> str | N
     This avoids CORS issues and expiring OpenAI CDN URLs in the browser.
     Returns None on failure.
     """
-    api_key = os.environ.get("OPENAI_API_KEY", "")
+    from app.core.config import settings as _cfg
+    api_key = _cfg.openai_api_key or os.environ.get("OPENAI_API_KEY", "")
     if not api_key or api_key.startswith("sk-test"):
         logger.warning("[DALL-E] skipped — no valid API key (key=%s)", api_key[:8] if api_key else "MISSING")
         return None

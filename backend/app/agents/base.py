@@ -89,7 +89,33 @@ class ArtisanAgent:
         # Keep only the most recent 10 messages to stay within context limits
         trimmed_history = history[-10:] if len(history) > 10 else history
 
-        messages = [SystemMessage(content=self.system_prompt)]
+        # Inject shipping context into the product_manager system prompt once per turn
+        effective_system_prompt = self.system_prompt
+        if self.role == "product_manager" and db is not None and tenant_id:
+            try:
+                from sqlalchemy import text as _text
+                _result = await db.execute(
+                    _text("SELECT shipping_method FROM tenant_business_profile WHERE tenant_id = :tid"),
+                    {"tid": str(tenant_id)},
+                )
+                _row = _result.fetchone()
+                _method = (_row[0] if _row else None) or "none"
+                _weight_note = (
+                    "\n\n## Shipping context (this account)\n"
+                    f"Shipping method: {_method}\n"
+                    + (
+                        "weight_required: true — always include weight_grams when listing or confirming products. "
+                        "Set weight_needed: true in confirm_product card props."
+                        if _method == "weight_based"
+                        else
+                        "weight_required: false — do NOT ask for weight. Set weight_needed: false in confirm_product card props."
+                    )
+                )
+                effective_system_prompt = self.system_prompt + _weight_note
+            except Exception as _exc:
+                logger.warning(f"[product_manager] could not fetch shipping method: {_exc}")
+
+        messages = [SystemMessage(content=effective_system_prompt)]
         for msg in trimmed_history:
             content = _clean(msg["content"])
             if not content:
@@ -509,23 +535,6 @@ class ArtisanAgent:
                 logger.error(f"[get_brand_dna] failed: {exc}")
                 return {"error": str(exc)}
 
-        if tool_name == "get_shipping_method" and db is not None and tenant_id:
-            try:
-                from sqlalchemy import text as _text
-                result = await db.execute(
-                    _text("SELECT shipping_method FROM tenant_business_profile WHERE tenant_id = :tid"),
-                    {"tid": str(tenant_id)},
-                )
-                row = result.fetchone()
-                method = (row[0] if row else None) or "none"
-                return {
-                    "shipping_method": method,
-                    "weight_required": method == "weight_based",
-                }
-            except Exception as exc:
-                logger.error(f"[get_shipping_method] failed: {exc}")
-                return {"shipping_method": "none", "weight_required": False, "error": str(exc)}
-
         if tool_name == "update_product_stock" and db is not None and tenant_id:
             try:
                 from app.models.product import Product as _Product
@@ -579,7 +588,8 @@ class ArtisanAgent:
                     product = await _get_product(args.get("product_id", ""), uuid.UUID(tenant_id), db)
                     from app.api.v1.marketing import _generate_caption, _product_image, _analyze_product_image
                     import os as _os
-                    _api_key = _os.environ.get("OPENAI_API_KEY", "")
+                    from app.core.config import settings
+                    _api_key = (settings.openai_api_key or _os.environ.get("OPENAI_API_KEY", ""))
                     product_img_url = _product_image(product)
 
                     # Call 1: vision — send product info + photo to GPT-4o in one request
@@ -627,11 +637,12 @@ class ArtisanAgent:
                 elif tool_name == "generate_social_post_batch":
                     import asyncio
                     import os as _os
+                    from app.core.config import settings
                     product = await _get_product(args.get("product_id", ""), uuid.UUID(tenant_id), db)
                     from app.api.v1.marketing import _generate_caption, PLATFORM_LABELS, _product_image, _analyze_product_image
                     platforms = args.get("platforms", ["instagram", "facebook", "tiktok"])
                     product_img_url = _product_image(product)
-                    _api_key = _os.environ.get("OPENAI_API_KEY", "")
+                    _api_key = (settings.openai_api_key or _os.environ.get("OPENAI_API_KEY", ""))
 
                     # Call 1: single vision call for the product photo (shared across all platforms)
                     image_analysis = ""
@@ -772,6 +783,7 @@ class ArtisanAgent:
 
                 elif tool_name == "generate_flier_image":
                     import os as _os
+                    from app.core.config import settings
                     from app.api.v1.marketing import (
                         _build_flier_spec, _generate_dalle_image, _flier_dalle_prompt,
                         _analyze_product_image, _product_image,
@@ -795,7 +807,7 @@ class ArtisanAgent:
                     headline = spec["copy"]["headline"]
                     imagery_style = spec["style"].get("imagery_style", "Product-focused lifestyle")
                     background_style = spec["style"].get("background_style", "Clean white background")
-                    _api_key = _os.environ.get("OPENAI_API_KEY", "")
+                    _api_key = (settings.openai_api_key or _os.environ.get("OPENAI_API_KEY", ""))
                     product_img_url = _product_image(product)
 
                     # Call 1: vision — send product info + photo to GPT-4o in one request
@@ -842,6 +854,7 @@ class ArtisanAgent:
                 elif tool_name == "generate_multi_flier_image":
                     import asyncio as _asyncio2
                     import os as _os
+                    from app.core.config import settings
                     from app.api.v1.marketing import (
                         _build_multi_flier_spec, _generate_dalle_image, _multi_flier_dalle_prompt,
                         _analyze_product_image, _product_image,
@@ -868,7 +881,7 @@ class ArtisanAgent:
                     )
                     size_map = {"square": "1024x1024", "portrait": "1024x1792", "landscape": "1792x1024"}
                     dalle_size = size_map.get(fmt, "1792x1024")
-                    _api_key = _os.environ.get("OPENAI_API_KEY", "")
+                    _api_key = (settings.openai_api_key or _os.environ.get("OPENAI_API_KEY", ""))
 
                     # Call 1: vision — analyze each product photo, run in parallel
                     async def _analyze_one(p):
