@@ -9,6 +9,7 @@ COPY . .
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 
+# Cache bust: 2026-06-25-v3
 RUN npm run build
 
 FROM node:22-alpine AS runner
