@@ -209,41 +209,23 @@ export function MultiFlierPreviewCard({
         </div>
       </div>
 
-      {/* AI image badge */}
-      {ai_image_url && (
-        <div className="px-5 pb-0 pt-2">
-          <span className="inline-flex items-center gap-1 text-xs bg-purple-100 text-purple-700 px-2.5 py-1 rounded-full font-medium">
-            ✨ AI-generated image
-          </span>
-        </div>
-      )}
-
       {/* Flier canvas */}
       <div className="p-4">
-        <div
-          ref={canvasRef}
-          className="rounded-xl overflow-hidden w-full relative"
-          style={{ backgroundColor: primaryColor, fontFamily }}
-        >
-          {/* AI full-bleed background */}
-          {ai_image_url && (
-            <>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={ai_image_url}
-                alt="AI-generated collection"
-                className="absolute inset-0 w-full h-full object-cover"
-              />
-              <div
-                className="absolute inset-0"
-                style={{ background: `linear-gradient(to bottom, ${hex2rgba(primaryColor, 0.55)} 0%, ${hex2rgba(primaryColor, 0.7)} 50%, ${hex2rgba(primaryColor, 0.92)} 100%)` }}
-              />
-            </>
-          )}
+        <div ref={canvasRef} className="rounded-xl overflow-hidden w-full">
+          {/* AI-generated flier: raw image only, no overlay */}
+          {ai_image_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={ai_image_url}
+              alt="AI-generated collection flier"
+              className="w-full h-auto block"
+            />
+          ) : (
 
-          {/* Content (relative so it sits above AI background) */}
-          <div className="relative z-10">
-
+          <div
+            className="relative"
+            style={{ backgroundColor: primaryColor, fontFamily }}
+          >
           {/* Brand header */}
           <div
             className="flex items-center justify-between px-5 py-3"
@@ -302,8 +284,9 @@ export function MultiFlierPreviewCard({
               />
             ))}
           </div>
+          </div>
 
-          </div>{/* end z-10 content wrapper */}
+          )}
         </div>
       </div>
 
