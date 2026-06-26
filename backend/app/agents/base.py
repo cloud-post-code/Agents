@@ -168,6 +168,13 @@ class ArtisanAgent:
                 if tool_name == "render_ui":
                     yield AgentEvent(type="a2ui", payload=result)
 
+                # Auto-emit product_list card when search_catalog is called with no query
+                # (i.e. "show all products"). The LLM sometimes skips the render_ui call.
+                if tool_name == "search_catalog" and not args.get("query", "").strip():
+                    pl_surface = result.get("_product_list_surface") if isinstance(result, dict) else None
+                    if pl_surface and "error" not in result:
+                        yield AgentEvent(type="a2ui", payload=pl_surface)
+
                 # Flier image tools auto-emit their card so the UI appears
                 # immediately — the LLM doesn't need to make a separate render_ui call
                 if tool_name == "generate_flier_image" and "error" not in result:
@@ -233,14 +240,20 @@ class ArtisanAgent:
                 result_dict = result if isinstance(result, dict) else {"results": result, "count": len(result)}
                 count = result_dict.get("count", len(products))
 
-                # Check for exact name match (case-insensitive)
+                # Check for exact match — by UUID (direct lookup) or by name
                 exact_match = None
                 if query_str and products:
-                    q_lower = query_str.strip().lower()
-                    exact_match = next(
-                        (p for p in products if (p.get("name") or "").lower() == q_lower),
-                        None
-                    )
+                    # If the query was a UUID and we got exactly one result, it's a direct hit
+                    try:
+                        uuid.UUID(query_str)
+                        if count == 1:
+                            exact_match = products[0]
+                    except ValueError:
+                        q_lower = query_str.strip().lower()
+                        exact_match = next(
+                            (p for p in products if (p.get("name") or "").lower() == q_lower),
+                            None
+                        )
 
                 # When there is no single exact match and multiple results exist,
                 # include a product_picker surface so the agent can ask the user

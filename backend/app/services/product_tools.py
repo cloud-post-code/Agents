@@ -75,19 +75,35 @@ async def search_catalog_impl(
     """Search products by name, description, or SKU with fuzzy partial matching."""
     # Allow single-character queries — strip but never require length > 1
     query = (query or "").strip()
-    search_term = f"%{query.lower()}%" if query else "%"
 
-    result = await db.execute(
-        select(Product)
-        .where(Product.tenant_id == tenant_id)
-        .where(Product.deleted_at.is_(None))
-        .where(
-            (func.lower(Product.name).like(search_term)) |
-            (func.lower(Product.description).like(search_term)) |
-            (func.lower(Product.sku).like(search_term))
+    # Direct UUID lookup — when the query is a product ID, fetch by primary key
+    _uuid_query: uuid.UUID | None = None
+    if query:
+        try:
+            _uuid_query = uuid.UUID(query)
+        except ValueError:
+            pass
+
+    if _uuid_query is not None:
+        result = await db.execute(
+            select(Product)
+            .where(Product.tenant_id == tenant_id)
+            .where(Product.deleted_at.is_(None))
+            .where(Product.id == _uuid_query)
         )
-        .limit(limit)
-    )
+    else:
+        search_term = f"%{query.lower()}%" if query else "%"
+        result = await db.execute(
+            select(Product)
+            .where(Product.tenant_id == tenant_id)
+            .where(Product.deleted_at.is_(None))
+            .where(
+                (func.lower(Product.name).like(search_term)) |
+                (func.lower(Product.description).like(search_term)) |
+                (func.lower(Product.sku).like(search_term))
+            )
+            .limit(limit)
+        )
 
     products = result.scalars().all()
 
