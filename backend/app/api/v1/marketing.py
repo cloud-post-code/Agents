@@ -331,24 +331,64 @@ def _build_flier_spec(
     }
 
 
-async def _generate_dalle_image(prompt: str, size: str = "1024x1024") -> str | None:
+async def _generate_dalle_image(
+    prompt: str,
+    size: str = "1024x1024",
+    product_image_url: str | None = None,
+) -> str | None:
     """
-    Call DALL-E 3, then download the image and return a base64 data URI.
-    This avoids CORS issues and expiring OpenAI CDN URLs in the browser.
-    Returns None on failure.
+    Generate a flier image using gpt-image-1 (supports image inputs) when a product
+    photo is available, falling back to dall-e-3 for text-only generation.
+    Returns a base64 data URI.
     """
     from app.core.config import settings as _cfg
     api_key = _cfg.openai_api_key or os.environ.get("OPENAI_API_KEY", "")
     if not api_key or api_key.startswith("sk-test"):
-        logger.warning("[DALL-E] skipped — no valid API key (key=%s)", api_key[:8] if api_key else "MISSING")
+        logger.warning("[image-gen] skipped — no valid API key (key=%s)", api_key[:8] if api_key else "MISSING")
         return None
-    logger.info("[DALL-E] generating image size=%s prompt_len=%d", size, len(prompt))
+    logger.info("[image-gen] generating flier size=%s has_product_image=%s prompt_len=%d", size, bool(product_image_url), len(prompt))
     try:
         from openai import AsyncOpenAI
         import httpx
-        import base64
+        import base64 as _b64
 
         client = AsyncOpenAI(api_key=api_key)
+
+        if product_image_url:
+            # gpt-image-1: accepts product photo as reference image input
+            logger.info("[image-gen] using gpt-image-1 with product image reference")
+
+            # Fetch the product image bytes to pass as input
+            async with httpx.AsyncClient(timeout=30) as http:
+                if product_image_url.startswith("data:"):
+                    header, raw = product_image_url.split(",", 1)
+                    img_bytes = _b64.b64decode(raw)
+                    img_content_type = header.split(";")[0].replace("data:", "") or "image/jpeg"
+                else:
+                    dl = await http.get(product_image_url)
+                    dl.raise_for_status()
+                    img_bytes = dl.content
+                    img_content_type = dl.headers.get("content-type", "image/jpeg").split(";")[0]
+
+            import io
+            img_file = io.BytesIO(img_bytes)
+            img_file.name = f"product.{img_content_type.split('/')[-1] or 'jpg'}"
+
+            resp = await client.images.edit(
+                model="gpt-image-1",
+                image=img_file,  # type: ignore[arg-type]
+                prompt=prompt,
+                size=size,  # type: ignore[arg-type]
+                n=1,
+            )
+            img_b64 = resp.data[0].b64_json
+            if img_b64:
+                logger.info("[image-gen] gpt-image-1 success")
+                return f"data:image/png;base64,{img_b64}"
+            logger.warning("[image-gen] gpt-image-1 returned no b64_json, falling back to dall-e-3")
+
+        # Fallback: dall-e-3 text-to-image
+        logger.info("[image-gen] using dall-e-3 text-to-image")
         resp = await client.images.generate(
             model="dall-e-3",
             prompt=prompt,
@@ -358,21 +398,19 @@ async def _generate_dalle_image(prompt: str, size: str = "1024x1024") -> str | N
         )
         image_url = resp.data[0].url
         if not image_url:
-            logger.error("[DALL-E] no URL returned in response")
+            logger.error("[image-gen] dall-e-3 returned no URL")
             return None
 
-        logger.info("[DALL-E] image URL received, downloading...")
-        # Download and convert to base64 data URI so it works in any browser
         async with httpx.AsyncClient(timeout=60) as http:
             dl = await http.get(image_url)
             dl.raise_for_status()
             content_type = dl.headers.get("content-type", "image/png").split(";")[0]
-            b64 = base64.b64encode(dl.content).decode()
-            logger.info("[DALL-E] image downloaded successfully size=%s bytes=%d", size, len(dl.content))
+            b64 = _b64.b64encode(dl.content).decode()
+            logger.info("[image-gen] dall-e-3 image downloaded bytes=%d", len(dl.content))
             return f"data:{content_type};base64,{b64}"
 
     except Exception as exc:
-        logger.error("[DALL-E] generation FAILED — type=%s msg=%s", type(exc).__name__, exc)
+        logger.error("[image-gen] FAILED — type=%s msg=%s", type(exc).__name__, exc)
         return None
 
 

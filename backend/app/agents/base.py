@@ -840,8 +840,8 @@ class ArtisanAgent:
                         subheadline=spec["copy"]["subheadline"],
                         price=f"${product.price:.2f}" if product.price else "",
                     )
-                    ai_image_url = await _generate_dalle_image(prompt, size=dalle_size)
-                    logger.info("[generate_flier_image] dalle result: %s", "got image" if ai_image_url else "NONE — image generation failed")
+                    ai_image_url = await _generate_dalle_image(prompt, size=dalle_size, product_image_url=product_img_url)
+                    logger.info("[generate_flier_image] result: %s", "got image" if ai_image_url else "NONE — image generation failed")
                     spec["ai_image_url"] = ai_image_url
                     spec["image_analysis"] = image_analysis
                     spec["_rendered"] = True
@@ -917,7 +917,9 @@ class ArtisanAgent:
                         subheadline=spec["copy"]["subheadline"],
                         image_analysis=combined_analysis,
                     )
-                    ai_image_url = await _generate_dalle_image(prompt, size=dalle_size)
+                    # Pass first product's image as reference for gpt-image-1
+                    first_img = _product_image(products_fetched[0]) if products_fetched else None
+                    ai_image_url = await _generate_dalle_image(prompt, size=dalle_size, product_image_url=first_img)
                     spec["ai_image_url"] = ai_image_url
                     spec["image_analysis"] = combined_analysis
                     spec["_rendered"] = True
