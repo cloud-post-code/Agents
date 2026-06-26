@@ -353,20 +353,22 @@ async def _generate_dalle_image(prompt: str, size: str = "1024x1024") -> str | N
             model="dall-e-3",
             prompt=prompt,
             size=size,  # type: ignore[arg-type]
-            quality="standard",
+            quality="hd",
             n=1,
         )
         image_url = resp.data[0].url
         if not image_url:
+            logger.error("[DALL-E] no URL returned in response")
             return None
 
+        logger.info("[DALL-E] image URL received, downloading...")
         # Download and convert to base64 data URI so it works in any browser
-        async with httpx.AsyncClient(timeout=30) as http:
+        async with httpx.AsyncClient(timeout=60) as http:
             dl = await http.get(image_url)
             dl.raise_for_status()
             content_type = dl.headers.get("content-type", "image/png").split(";")[0]
             b64 = base64.b64encode(dl.content).decode()
-            logger.info("[DALL-E] image downloaded successfully size=%s", size)
+            logger.info("[DALL-E] image downloaded successfully size=%s bytes=%d", size, len(dl.content))
             return f"data:{content_type};base64,{b64}"
 
     except Exception as exc:
@@ -395,44 +397,18 @@ def _flier_dalle_prompt(
 ) -> str:
     visual_detail = image_analysis or product_description
 
-    brand_block = f"Brand: {brand_name}."
-    if tagline:
-        brand_block += f" Tagline: \"{tagline}\"."
-    if tone:
-        brand_block += f" Brand tone: {tone}."
-    if target_audience:
-        brand_block += f" Target audience: {target_audience}."
-    if font_family:
-        brand_block += f" Typography: {font_family}."
+    parts = [
+        f"A professional product lifestyle photo for '{product_name}' by {brand_name}.",
+        f"{visual_detail}." if visual_detail else "",
+        f"Color palette: {primary_color} and {secondary_color}.",
+        f"Visual style: {imagery_style}." if imagery_style else "",
+        f"Background: {background_style}." if background_style else "",
+        f"Brand tone: {tone}." if tone else "",
+        "High quality commercial photography. Clean, premium, editorial aesthetic.",
+        "No text, no logos, no watermarks. Pure visual scene only.",
+    ]
 
-    copy_block = f"Headline: \"{headline}\"."
-    if subheadline:
-        copy_block += f" Subheadline: \"{subheadline}\"."
-    if promo_text:
-        copy_block += f" Promo badge: \"{promo_text}\"."
-    if price:
-        copy_block += f" Price: {price}."
-    if call_to_action:
-        copy_block += f" Call to action: \"{call_to_action}\"."
-
-    return (
-        "Create a polished, premium promotional flyer as a finished design ready for export.\n\n"
-        f"BRAND IDENTITY\n{brand_block}\n"
-        f"Color palette: primary {primary_color}, accent {secondary_color}. "
-        f"Visual style: {imagery_style}. Background: {background_style}.\n\n"
-        f"PRODUCT\nFeatured product: {product_name}. {visual_detail}\n"
-        "Use the product as the hero visual. Present it naturally and professionally — "
-        "accurate colors, proportions, and packaging. Do not add products not described.\n\n"
-        f"COPY TO INCLUDE\n{copy_block}\n\n"
-        "DESIGN RULES\n"
-        "- Preserve the brand's color palette, typography, spacing, and visual language.\n"
-        "- Strong visual hierarchy: headline → product image → supporting details → CTA.\n"
-        "- Keep copy short, readable, and high-converting.\n"
-        "- Generous whitespace, no clutter. Text must be legible over images.\n"
-        "- Suitable for both print and social sharing.\n"
-        "- Clean, premium, on-brand. One finished design — no concepts, no explanations.\n"
-        "- Do not add logos, watermarks, or claims not provided above."
-    )
+    return " ".join(p for p in parts if p)
 
 
 def _multi_flier_dalle_prompt(
@@ -454,44 +430,21 @@ def _multi_flier_dalle_prompt(
 ) -> str:
     products_str = ", ".join(product_names)
 
-    brand_block = f"Brand: {brand_name}."
-    if tagline:
-        brand_block += f" Tagline: \"{tagline}\"."
-    if tone:
-        brand_block += f" Brand tone: {tone}."
-    if target_audience:
-        brand_block += f" Target audience: {target_audience}."
-    if font_family:
-        brand_block += f" Typography: {font_family}."
+    visual_note = f" {image_analysis}." if image_analysis else ""
 
-    copy_block = f"Headline: \"{headline}\"."
-    if subheadline:
-        copy_block += f" Subheadline: \"{subheadline}\"."
-    if promo_text:
-        copy_block += f" Promo badge: \"{promo_text}\"."
-    if call_to_action:
-        copy_block += f" Call to action: \"{call_to_action}\"."
+    parts = [
+        f"A professional product collection lifestyle photo featuring {products_str} by {brand_name}.",
+        visual_note,
+        f"Color palette: {primary_color} and {secondary_color}.",
+        f"Visual style: {imagery_style}." if imagery_style else "",
+        f"Background: {background_style}." if background_style else "",
+        f"Brand tone: {tone}." if tone else "",
+        "Products elegantly arranged in a lifestyle or flat-lay composition.",
+        "High quality commercial photography. Clean, premium, editorial aesthetic.",
+        "No text, no logos, no watermarks. Pure visual scene only.",
+    ]
 
-    visual_note = f" Product visuals: {image_analysis}" if image_analysis else ""
-
-    return (
-        "Create a polished, premium promotional collection flyer as a finished design ready for export.\n\n"
-        f"BRAND IDENTITY\n{brand_block}\n"
-        f"Color palette: primary {primary_color}, accent {secondary_color}. "
-        f"Visual style: {imagery_style}. Background: {background_style}.\n\n"
-        f"PRODUCTS\nFeatured products: {products_str}.{visual_note}\n"
-        "Arrange the products elegantly together — lifestyle or flat-lay composition. "
-        "Accurate colors, proportions, and packaging. Do not add products not listed.\n\n"
-        f"COPY TO INCLUDE\n{copy_block}\n\n"
-        "DESIGN RULES\n"
-        "- Preserve the brand's color palette, typography, spacing, and visual language.\n"
-        "- Strong visual hierarchy: headline → product images → supporting details → CTA.\n"
-        "- Keep copy short, readable, and high-converting.\n"
-        "- Generous whitespace, no clutter. Text must be legible over images.\n"
-        "- Suitable for both print and social sharing.\n"
-        "- Clean, premium, on-brand. One finished design — no concepts, no explanations.\n"
-        "- Do not add logos, watermarks, or claims not provided above."
-    )
+    return " ".join(p for p in parts if p)
 
 
 def _product_image(product: Product) -> str | None:
