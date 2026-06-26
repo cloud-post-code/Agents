@@ -841,6 +841,7 @@ class ArtisanAgent:
                         price=f"${product.price:.2f}" if product.price else "",
                     )
                     ai_image_url = await _generate_dalle_image(prompt, size=dalle_size)
+                    logger.info("[generate_flier_image] dalle result: %s", "got image" if ai_image_url else "NONE — image generation failed")
                     spec["ai_image_url"] = ai_image_url
                     spec["image_analysis"] = image_analysis
                     spec["_rendered"] = True

@@ -176,9 +176,11 @@ async def _analyze_product_image(
             ],
             max_tokens=200,
         )
-        return (resp.choices[0].message.content or "").strip()
+        result = (resp.choices[0].message.content or "").strip()
+        logger.info("[vision] analysis complete len=%d", len(result))
+        return result
     except Exception as exc:
-        logger.warning(f"Vision analysis failed: {exc}")
+        logger.warning("[vision] analysis failed (non-fatal, continuing): %s", exc)
         return desc or ""
 
 
@@ -368,7 +370,7 @@ async def _generate_dalle_image(prompt: str, size: str = "1024x1024") -> str | N
             return f"data:{content_type};base64,{b64}"
 
     except Exception as exc:
-        logger.warning("[DALL-E] generation failed: %s", exc)
+        logger.error("[DALL-E] generation FAILED — type=%s msg=%s", type(exc).__name__, exc)
         return None
 
 
