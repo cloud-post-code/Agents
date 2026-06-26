@@ -75,7 +75,7 @@ function ProductTile({ product, primaryColor, secondaryColor, textOnPrimary, tex
             src={product.image_url}
             alt={product.name ?? ""}
             className="w-full h-full object-contain"
-            crossOrigin={undefined}
+            crossOrigin={product.image_url.startsWith("http") ? "anonymous" : undefined}
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
