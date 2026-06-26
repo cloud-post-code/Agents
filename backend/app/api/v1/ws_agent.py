@@ -23,11 +23,18 @@ router = APIRouter(tags=["ws-agent"])
 
 CONTEXT_WINDOW_MESSAGES = 10  # Only load 10 most recent messages initially
 
-_BASE64_PATTERN = _re.compile(r'data:[^;]+;base64,[A-Za-z0-9+/=]{100,}', _re.DOTALL)
+_BASE64_PATTERN = _re.compile(r'data:[^;]+;base64,[A-Za-z0-9+/=\n]{20,}', _re.DOTALL)
+
+# Hard character limit per message sent to the LLM (~2k tokens)
+_MAX_MSG_CHARS = 8000
 
 
 def _strip_base64(s: str) -> str:
-    return _BASE64_PATTERN.sub('', s)
+    cleaned = _BASE64_PATTERN.sub('', s or '')
+    # Also truncate any remaining oversized content
+    if len(cleaned) > _MAX_MSG_CHARS:
+        cleaned = cleaned[:_MAX_MSG_CHARS] + '…'
+    return cleaned.strip()
 
 
 def _make_session() -> AsyncSession:

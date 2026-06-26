@@ -79,10 +79,12 @@ class ArtisanAgent:
         is_fake = isinstance(self.llm, FakeChatModel)
 
         import re as _re_b64
-        _b64_pattern = _re_b64.compile(r'data:[^;]+;base64,[A-Za-z0-9+/=\n]{100,}', _re_b64.DOTALL)
+        _b64_pattern = _re_b64.compile(r'data:[^;]+;base64,[A-Za-z0-9+/=\n]{20,}', _re_b64.DOTALL)
 
         def _clean(text: str) -> str:
-            return _b64_pattern.sub('', text or '').strip()
+            cleaned = _b64_pattern.sub('', text or '').strip()
+            # Hard truncate to ~2k tokens per message
+            return cleaned[:8000] + '…' if len(cleaned) > 8000 else cleaned
 
         # Keep only the most recent 30 messages to stay within context limits
         trimmed_history = history[-30:] if len(history) > 30 else history
