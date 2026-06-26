@@ -563,7 +563,10 @@ export function AgentShell({ agent }: AgentShellProps) {
 
   // Render message content — strip base64 blobs, replace image URLs with <img>
   const renderMessageContent = (content: string) => {
-    const cleaned = content.replace(/data:[^;]+;base64,[A-Za-z0-9+/=\n]{50,}/g, "").trim();
+    const cleaned = content
+      .replace(/data:[^;]+;base64,[A-Za-z0-9+/=\n]{50,}/g, "")
+      .replace(/\[image\]/g, "")
+      .trim();
     if (!cleaned) return null;
 
     // Split on any https URL that looks like an image (by extension or by upload path)

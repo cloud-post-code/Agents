@@ -74,7 +74,7 @@ async def get_agent_history_by_role(
         {
             "id": str(m.id),
             "role": m.role,
-            "content": _base64.sub("[image]", m.content or ""),
+            "content": _base64.sub("", m.content or ""),
             "created_at": m.created_at.isoformat(),
         }
         for m in messages
@@ -171,7 +171,7 @@ async def get_session_messages(
             # Truncate very long messages (like base64 images)
             import re
             base64_pattern = re.compile(r'data:[^;]+;base64,[A-Za-z0-9+/=]{100,}', re.DOTALL)
-            content = base64_pattern.sub('[image]', content)
+            content = base64_pattern.sub('', content)
         
         items.append({
             "id": str(msg.id),

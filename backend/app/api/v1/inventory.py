@@ -146,7 +146,22 @@ async def create_product(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    img_url_col, img_data_col = _resolve_image(body.image_url)
+    # Upload data: URIs to R2; keep https: URLs as-is
+    final_image_url: str | None = None
+    if body.image_url:
+        if body.image_url.startswith("https://") or body.image_url.startswith("http://"):
+            final_image_url = body.image_url[:1024]
+        elif body.image_url.startswith("data:"):
+            import base64 as _b64c
+            try:
+                header, raw = body.image_url.split(",", 1)
+                ct = header.split(";")[0].replace("data:", "") or "image/jpeg"
+                final_image_url = await get_storage_service().upload_image(
+                    _b64c.b64decode(raw), ct, "images/products"
+                )
+            except Exception:
+                final_image_url = None
+
     product = Product(
         tenant_id=current_user.tenant_id,
         name=body.name,
@@ -157,8 +172,8 @@ async def create_product(
         stock_qty=body.stock_qty,
         reorder_point=body.reorder_point,
         weight_grams=body.weight_grams,
-        image_url=img_url_col,
-        image_data=img_data_col,
+        image_url=final_image_url,
+        image_data=None,
     )
     db.add(product)
     await db.commit()
@@ -208,9 +223,21 @@ async def update_product(
         raise HTTPException(status_code=404, detail="Product not found")
     updates = body.model_dump(exclude_none=True)
     if "image_url" in updates:
-        img_url_col, img_data_col = _resolve_image(updates.pop("image_url"))
-        product.image_url = img_url_col
-        product.image_data = img_data_col
+        raw_url = updates.pop("image_url")
+        if raw_url and raw_url.startswith("data:"):
+            import base64 as _b64u
+            try:
+                header, raw = raw_url.split(",", 1)
+                ct = header.split(";")[0].replace("data:", "") or "image/jpeg"
+                product.image_url = await get_storage_service().upload_image(
+                    _b64u.b64decode(raw), ct, "images/products"
+                )
+            except Exception:
+                product.image_url = None
+        else:
+            img_url_col, img_data_col = _resolve_image(raw_url)
+            product.image_url = img_url_col
+            product.image_data = img_data_col
     for field, value in updates.items():
         setattr(product, field, value)
     await db.commit()
@@ -483,15 +510,24 @@ async def save_product_image(
     if product is None:
         raise HTTPException(status_code=404, detail="Product not found")
 
-    img_url_col, img_data_col = _resolve_image(body.image_url)
-    product.image_url = img_url_col
-    product.image_data = img_data_col
+    if body.image_url and body.image_url.startswith("data:"):
+        import base64 as _b64s
+        try:
+            header, raw = body.image_url.split(",", 1)
+            ct = header.split(";")[0].replace("data:", "") or "image/jpeg"
+            product.image_url = await get_storage_service().upload_image(
+                _b64s.b64decode(raw), ct, "images/products"
+            )
+        except Exception:
+            product.image_url = None
+        product.image_data = None
+    else:
+        img_url_col, _ = _resolve_image(body.image_url)
+        product.image_url = img_url_col
+        product.image_data = None
     await db.commit()
     await db.refresh(product)
-    image_out = product.image_url
-    if not image_out and product.image_data:
-        image_out = f"data:image/jpeg;base64,{product.image_data}"
-    return {"status": "ok", "product_id": str(product.id), "image_url": image_out}
+    return {"status": "ok", "product_id": str(product.id), "image_url": product.image_url}
 
 
 @router.post("/{product_id}/image-upload", status_code=200)

@@ -27,7 +27,7 @@ _BASE64_PATTERN = _re.compile(r'data:[^;]+;base64,[A-Za-z0-9+/=]{100,}', _re.DOT
 
 
 def _strip_base64(s: str) -> str:
-    return _BASE64_PATTERN.sub('[image]', s)
+    return _BASE64_PATTERN.sub('', s)
 
 
 def _make_session() -> AsyncSession:
@@ -99,26 +99,39 @@ async def _handle_image_upload(
     """Call vision AI to extract product info, emit a confirm_product card."""
     result = await _extract_single_image(image_url, filename, tenant_id_str, db)
 
-    # Persist the image into temp_images so the frontend can reference it by id
-    import re as _re_uri
+    # Persist image into temp_images via R2 so frontend can reference by id
     data_url = image_url
     image_id: str | None = None
-    if image_url.startswith("data:"):
-        try:
+    try:
+        import base64 as _b64m
+        from app.services.storage import get_storage_service
+        if image_url.startswith("data:"):
             header, raw_b64 = image_url.split(",", 1)
             content_type = header.split(";")[0].replace("data:", "") or "image/jpeg"
-            temp_image = TempImage(
-                tenant_id=uuid.UUID(tenant_id_str),
-                image_data=raw_b64,
-                content_type=content_type,
-            )
-            db.add(temp_image)
-            await db.commit()
-            await db.refresh(temp_image)
-            data_url = f"data:{content_type};base64,{raw_b64}"
-            image_id = str(temp_image.id)
-        except Exception as _exc:
-            _logger.warning("[_handle_image_upload] failed to persist TempImage: %s", _exc)
+            image_bytes = _b64m.b64decode(raw_b64)
+        else:
+            # Already an R2/https URL — fetch bytes to re-store in temp_images with URL
+            import httpx
+            async with httpx.AsyncClient(timeout=10) as hc:
+                resp = await hc.get(image_url)
+            image_bytes = resp.content
+            content_type = resp.headers.get("content-type", "image/jpeg").split(";")[0]
+
+        storage = get_storage_service()
+        r2_url = await storage.upload_image(image_bytes, content_type, "images/temp")
+        temp_image = TempImage(
+            tenant_id=uuid.UUID(tenant_id_str),
+            image_url=r2_url,
+            image_data=None,
+            content_type=content_type,
+        )
+        db.add(temp_image)
+        await db.commit()
+        await db.refresh(temp_image)
+        data_url = r2_url
+        image_id = str(temp_image.id)
+    except Exception as _exc:
+        _logger.warning("[_handle_image_upload] failed to persist TempImage to R2: %s", _exc)
 
     props: dict = {
         "image_url": data_url,
