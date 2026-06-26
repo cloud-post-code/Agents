@@ -785,8 +785,8 @@ class ArtisanAgent:
                     import os as _os
                     from app.core.config import settings
                     from app.api.v1.marketing import (
-                        _build_flier_spec, _generate_dalle_image, _flier_dalle_prompt,
-                        _analyze_product_image, _product_image,
+                        _build_flier_spec, _generate_dalle_image, _generate_dalle_image_with_error,
+                        _flier_dalle_prompt, _analyze_product_image, _product_image,
                     )
                     logger.info("[generate_flier_image] starting for product_id=%s", args.get("product_id"))
                     product = await _get_product(args.get("product_id", ""), uuid.UUID(tenant_id), db)
@@ -841,9 +841,15 @@ class ArtisanAgent:
                         subheadline=spec["copy"]["subheadline"],
                         price=f"${product.price:.2f}" if product.price else "",
                     )
-                    ai_image_url = await _generate_dalle_image(prompt, size=dalle_size, product_image_url=product_img_url)
-                    logger.info("[generate_flier_image] result: %s", "got image" if ai_image_url else "NONE — image generation failed")
+                    ai_image_url, dalle_error = await _generate_dalle_image_with_error(prompt, size=dalle_size)
+                    logger.info("[generate_flier_image] result: %s error: %s", "got image" if ai_image_url else "NONE", dalle_error)
                     spec["ai_image_url"] = ai_image_url
+                    if dalle_error:
+                        spec["_dalle_error"] = dalle_error
+                        spec["_instruction"] = (
+                            f"Image generation failed: {dalle_error}. "
+                            "Tell the user there was an issue generating the AI image and mention the specific error."
+                        )
                     spec["image_analysis"] = image_analysis
                     spec["_rendered"] = True
                     spec["_instruction"] = (

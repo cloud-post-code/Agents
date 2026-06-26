@@ -331,18 +331,18 @@ def _build_flier_spec(
     }
 
 
-async def _generate_dalle_image(
+async def _generate_dalle_image_with_error(
     prompt: str,
     size: str = "1024x1792",
-    product_image_url: str | None = None,
-) -> str | None:
-    """Generate a flier image with DALL-E 3. Returns a base64 data URI."""
+) -> tuple[str | None, str | None]:
+    """Generate a flier image with DALL-E 3. Returns (data_uri, error_string)."""
     from app.core.config import settings as _cfg
     api_key = _cfg.openai_api_key or os.environ.get("OPENAI_API_KEY", "")
     if not api_key or api_key.startswith("sk-test"):
-        logger.warning("[dalle] skipped — no valid API key")
-        return None
-    logger.info("[dalle] generating size=%s prompt_len=%d", size, len(prompt))
+        msg = f"No valid OpenAI API key (found: {'sk-test...' if api_key else 'MISSING'})"
+        logger.warning("[dalle] %s", msg)
+        return None, msg
+    logger.info("[dalle] generating size=%s prompt_len=%d key=%s", size, len(prompt), api_key[:8])
     try:
         from openai import AsyncOpenAI
         import httpx
@@ -358,18 +358,28 @@ async def _generate_dalle_image(
         )
         image_url = resp.data[0].url
         if not image_url:
-            logger.error("[dalle] no URL in response")
-            return None
+            return None, "DALL-E returned no image URL"
         async with httpx.AsyncClient(timeout=60) as http:
             dl = await http.get(image_url)
             dl.raise_for_status()
             content_type = dl.headers.get("content-type", "image/png").split(";")[0]
             b64 = _b64.b64encode(dl.content).decode()
             logger.info("[dalle] success bytes=%d", len(dl.content))
-            return f"data:{content_type};base64,{b64}"
+            return f"data:{content_type};base64,{b64}", None
     except Exception as exc:
-        logger.error("[dalle] FAILED type=%s msg=%s", type(exc).__name__, exc)
-        return None
+        msg = f"{type(exc).__name__}: {exc}"
+        logger.error("[dalle] FAILED %s", msg)
+        return None, msg
+
+
+async def _generate_dalle_image(
+    prompt: str,
+    size: str = "1024x1792",
+    product_image_url: str | None = None,
+) -> str | None:
+    """Wrapper that discards the error string."""
+    result, _ = await _generate_dalle_image_with_error(prompt, size)
+    return result
 
 
 def _flier_dalle_prompt(
