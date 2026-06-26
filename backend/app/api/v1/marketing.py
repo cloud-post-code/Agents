@@ -398,14 +398,19 @@ def _flier_dalle_prompt(
     visual_detail = image_analysis or product_description
 
     parts = [
-        f"A professional product lifestyle photo for '{product_name}' by {brand_name}.",
-        f"{visual_detail}." if visual_detail else "",
-        f"Color palette: {primary_color} and {secondary_color}.",
+        f"A polished marketing flier for {brand_name}.",
+        f"Product: {product_name}. {visual_detail}." if visual_detail else f"Product: {product_name}.",
+        f"Headline: {headline}." if headline else "",
+        f"Subheadline: {subheadline}." if subheadline else "",
+        f"Call to action: {call_to_action}." if call_to_action else "",
+        f"Promotion: {promo_text}." if promo_text else "",
+        f"Price: {price}." if price else "",
+        f"Brand tone: {tone}." if tone else "",
+        f"Target audience: {target_audience}." if target_audience else "",
+        f"Color palette: primary {primary_color}, accent {secondary_color}.",
         f"Visual style: {imagery_style}." if imagery_style else "",
         f"Background: {background_style}." if background_style else "",
-        f"Brand tone: {tone}." if tone else "",
-        "High quality commercial photography. Clean, premium, editorial aesthetic.",
-        "No text, no logos, no watermarks. Pure visual scene only.",
+        "Clean layout, strong visual hierarchy, premium commercial quality.",
     ]
 
     return " ".join(p for p in parts if p)
@@ -430,18 +435,20 @@ def _multi_flier_dalle_prompt(
 ) -> str:
     products_str = ", ".join(product_names)
 
-    visual_note = f" {image_analysis}." if image_analysis else ""
+    visual_note = image_analysis or ""
 
     parts = [
-        f"A professional product collection lifestyle photo featuring {products_str} by {brand_name}.",
+        f"A polished marketing flier for {brand_name} featuring {products_str}.",
         visual_note,
-        f"Color palette: {primary_color} and {secondary_color}.",
+        f"Headline: {headline}." if headline else "",
+        f"Subheadline: {subheadline}." if subheadline else "",
+        f"Call to action: {call_to_action}." if call_to_action else "",
+        f"Promotion: {promo_text}." if promo_text else "",
+        f"Brand tone: {tone}." if tone else "",
+        f"Color palette: primary {primary_color}, accent {secondary_color}.",
         f"Visual style: {imagery_style}." if imagery_style else "",
         f"Background: {background_style}." if background_style else "",
-        f"Brand tone: {tone}." if tone else "",
-        "Products elegantly arranged in a lifestyle or flat-lay composition.",
-        "High quality commercial photography. Clean, premium, editorial aesthetic.",
-        "No text, no logos, no watermarks. Pure visual scene only.",
+        "Products elegantly arranged. Clean layout, strong visual hierarchy, premium commercial quality.",
     ]
 
     return " ".join(p for p in parts if p)
