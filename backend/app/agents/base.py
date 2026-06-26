@@ -792,7 +792,7 @@ class ArtisanAgent:
                             api_key=_api_key,
                         )
 
-                    # Call 2: DALL-E — use vision analysis for a richer, photo-informed prompt
+                    # Call 2: DALL-E — full brand context + vision analysis
                     prompt = _flier_dalle_prompt(
                         brand_name=spec["brand"]["name"],
                         product_name=product.name,
@@ -803,6 +803,14 @@ class ArtisanAgent:
                         imagery_style=imagery_style,
                         background_style=background_style,
                         image_analysis=image_analysis,
+                        tagline=brand.tagline if brand else "",
+                        tone=", ".join(brand.tone_adjectives) if (brand and brand.tone_adjectives) else "",
+                        target_audience=brand.target_audience if brand else "",
+                        font_family=brand.font_family if brand else "",
+                        call_to_action=spec["copy"]["call_to_action"],
+                        promo_text=spec["copy"]["promo_text"],
+                        subheadline=spec["copy"]["subheadline"],
+                        price=f"${product.price:.2f}" if product.price else "",
                     )
                     ai_image_url = await _generate_dalle_image(prompt, size=dalle_size)
                     spec["ai_image_url"] = ai_image_url
@@ -861,7 +869,7 @@ class ArtisanAgent:
                     analyses = await _asyncio2.gather(*[_analyze_one(p) for p in products_fetched])
                     combined_analysis = " | ".join(a for a in analyses if a)
 
-                    # Call 2: DALL-E with vision-informed prompt
+                    # Call 2: DALL-E with full brand context + vision analysis
                     prompt = _multi_flier_dalle_prompt(
                         brand_name=spec["brand"]["name"],
                         product_names=[p.name for p in products_fetched],
@@ -870,9 +878,15 @@ class ArtisanAgent:
                         secondary_color=spec["brand"]["secondary_color"],
                         imagery_style=spec["style"].get("imagery_style", "Product-focused lifestyle"),
                         background_style=spec["style"].get("background_style", "Clean white background"),
+                        tagline=brand.tagline if brand else "",
+                        tone=", ".join(brand.tone_adjectives) if (brand and brand.tone_adjectives) else "",
+                        target_audience=brand.target_audience if brand else "",
+                        font_family=brand.font_family if brand else "",
+                        call_to_action=spec["copy"]["call_to_action"],
+                        promo_text=spec["copy"]["promo_text"],
+                        subheadline=spec["copy"]["subheadline"],
+                        image_analysis=combined_analysis,
                     )
-                    if combined_analysis:
-                        prompt = prompt.rstrip() + f" Product visuals: {combined_analysis}"
                     ai_image_url = await _generate_dalle_image(prompt, size=dalle_size)
                     spec["ai_image_url"] = ai_image_url
                     spec["image_analysis"] = combined_analysis

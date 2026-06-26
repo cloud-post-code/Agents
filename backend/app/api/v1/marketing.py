@@ -378,17 +378,54 @@ def _flier_dalle_prompt(
     imagery_style: str,
     background_style: str,
     image_analysis: str = "",
+    tagline: str = "",
+    tone: str = "",
+    target_audience: str = "",
+    font_family: str = "",
+    call_to_action: str = "",
+    promo_text: str = "",
+    subheadline: str = "",
+    price: str = "",
 ) -> str:
     visual_detail = image_analysis or product_description
+
+    brand_block = f"Brand: {brand_name}."
+    if tagline:
+        brand_block += f" Tagline: \"{tagline}\"."
+    if tone:
+        brand_block += f" Brand tone: {tone}."
+    if target_audience:
+        brand_block += f" Target audience: {target_audience}."
+    if font_family:
+        brand_block += f" Typography: {font_family}."
+
+    copy_block = f"Headline: \"{headline}\"."
+    if subheadline:
+        copy_block += f" Subheadline: \"{subheadline}\"."
+    if promo_text:
+        copy_block += f" Promo badge: \"{promo_text}\"."
+    if price:
+        copy_block += f" Price: {price}."
+    if call_to_action:
+        copy_block += f" Call to action: \"{call_to_action}\"."
+
     return (
-        f"Create a professional marketing flier image for '{brand_name}'. "
-        f"Featured product: {product_name}. {visual_detail}. "
-        f"Headline text on the flier: '{headline}'. "
+        "Create a polished, premium promotional flyer as a finished design ready for export.\n\n"
+        f"BRAND IDENTITY\n{brand_block}\n"
         f"Color palette: primary {primary_color}, accent {secondary_color}. "
-        f"Style: {imagery_style}. Background: {background_style}. "
-        "High quality, clean layout, commercial photography aesthetic. "
-        "No watermarks. Do not include any text or logos in the generated image — "
-        "the image should be the visual backdrop/scene only."
+        f"Visual style: {imagery_style}. Background: {background_style}.\n\n"
+        f"PRODUCT\nFeatured product: {product_name}. {visual_detail}\n"
+        "Use the product as the hero visual. Present it naturally and professionally — "
+        "accurate colors, proportions, and packaging. Do not add products not described.\n\n"
+        f"COPY TO INCLUDE\n{copy_block}\n\n"
+        "DESIGN RULES\n"
+        "- Preserve the brand's color palette, typography, spacing, and visual language.\n"
+        "- Strong visual hierarchy: headline → product image → supporting details → CTA.\n"
+        "- Keep copy short, readable, and high-converting.\n"
+        "- Generous whitespace, no clutter. Text must be legible over images.\n"
+        "- Suitable for both print and social sharing.\n"
+        "- Clean, premium, on-brand. One finished design — no concepts, no explanations.\n"
+        "- Do not add logos, watermarks, or claims not provided above."
     )
 
 
@@ -400,17 +437,54 @@ def _multi_flier_dalle_prompt(
     secondary_color: str,
     imagery_style: str,
     background_style: str,
+    tagline: str = "",
+    tone: str = "",
+    target_audience: str = "",
+    font_family: str = "",
+    call_to_action: str = "",
+    promo_text: str = "",
+    subheadline: str = "",
+    image_analysis: str = "",
 ) -> str:
     products_str = ", ".join(product_names)
+
+    brand_block = f"Brand: {brand_name}."
+    if tagline:
+        brand_block += f" Tagline: \"{tagline}\"."
+    if tone:
+        brand_block += f" Brand tone: {tone}."
+    if target_audience:
+        brand_block += f" Target audience: {target_audience}."
+    if font_family:
+        brand_block += f" Typography: {font_family}."
+
+    copy_block = f"Headline: \"{headline}\"."
+    if subheadline:
+        copy_block += f" Subheadline: \"{subheadline}\"."
+    if promo_text:
+        copy_block += f" Promo badge: \"{promo_text}\"."
+    if call_to_action:
+        copy_block += f" Call to action: \"{call_to_action}\"."
+
+    visual_note = f" Product visuals: {image_analysis}" if image_analysis else ""
+
     return (
-        f"Create a professional collection marketing flier image for '{brand_name}'. "
-        f"Featured products: {products_str}. "
-        f"Headline: '{headline}'. "
+        "Create a polished, premium promotional collection flyer as a finished design ready for export.\n\n"
+        f"BRAND IDENTITY\n{brand_block}\n"
         f"Color palette: primary {primary_color}, accent {secondary_color}. "
-        f"Style: {imagery_style}. Background: {background_style}. "
-        "Show the products elegantly arranged together in a lifestyle or flat-lay composition. "
-        "High quality, clean commercial photography aesthetic. No watermarks. "
-        "Do not include any text or logos — image is the visual scene only."
+        f"Visual style: {imagery_style}. Background: {background_style}.\n\n"
+        f"PRODUCTS\nFeatured products: {products_str}.{visual_note}\n"
+        "Arrange the products elegantly together — lifestyle or flat-lay composition. "
+        "Accurate colors, proportions, and packaging. Do not add products not listed.\n\n"
+        f"COPY TO INCLUDE\n{copy_block}\n\n"
+        "DESIGN RULES\n"
+        "- Preserve the brand's color palette, typography, spacing, and visual language.\n"
+        "- Strong visual hierarchy: headline → product images → supporting details → CTA.\n"
+        "- Keep copy short, readable, and high-converting.\n"
+        "- Generous whitespace, no clutter. Text must be legible over images.\n"
+        "- Suitable for both print and social sharing.\n"
+        "- Clean, premium, on-brand. One finished design — no concepts, no explanations.\n"
+        "- Do not add logos, watermarks, or claims not provided above."
     )
 
 
