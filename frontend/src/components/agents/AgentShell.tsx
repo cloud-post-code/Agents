@@ -534,7 +534,7 @@ export function AgentShell({ agent }: AgentShellProps) {
   const stopStreaming = () => {
     if (streamingTimeoutRef.current) clearTimeout(streamingTimeoutRef.current);
     streamingTimeoutRef.current = null;
-    stopStreaming();
+    setStreaming(false);
   };
 
   const handleAction = (message: string) => {
