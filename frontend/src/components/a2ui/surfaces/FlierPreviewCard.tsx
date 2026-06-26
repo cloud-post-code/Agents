@@ -88,6 +88,10 @@ export function FlierPreviewCard({
   const price = product?.price;
   // AI-generated image takes priority; fall back to product photo
   const imageUrl = ai_image_url || product?.image_url;
+  // crossOrigin="anonymous" is needed for html2canvas but breaks if the server
+  // doesn't send CORS headers (e.g. R2 public bucket without a CORS policy).
+  // Only set it on data URIs — R2/external URLs render fine without it.
+  const productImgCrossOrigin = (_url?: string | null): "anonymous" | undefined => undefined;
 
   // Portrait is taller so use a bigger image box; landscape uses a side-by-side
   const isLandscape = format === "landscape";
@@ -230,7 +234,7 @@ export function FlierPreviewCard({
                     src={imageUrl}
                     alt={product?.name}
                     className="absolute inset-0 w-full h-full object-cover"
-                    crossOrigin="anonymous"
+                    crossOrigin={productImgCrossOrigin(imageUrl)}
                   />
                 ) : (
                   <div
@@ -329,7 +333,7 @@ export function FlierPreviewCard({
                     src={imageUrl}
                     alt={product?.name}
                     className="w-full h-full object-contain"
-                    crossOrigin="anonymous"
+                    crossOrigin={productImgCrossOrigin(imageUrl)}
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center">
