@@ -10,7 +10,7 @@ const geistSans = Geist({
 
 export const metadata: Metadata = {
   title: "Artisan Platform",
-  description: "AI-powered platform for artisan businesses",
+  description: "AI platform for artisan businesses",
 };
 
 export default function RootLayout({
