@@ -337,7 +337,9 @@ async def _generate_dalle_image(prompt: str, size: str = "1024x1024") -> str | N
     """
     api_key = os.environ.get("OPENAI_API_KEY", "")
     if not api_key or api_key.startswith("sk-test"):
+        logger.warning("[DALL-E] skipped — no valid API key (key=%s)", api_key[:8] if api_key else "MISSING")
         return None
+    logger.info("[DALL-E] generating image size=%s prompt_len=%d", size, len(prompt))
     try:
         from openai import AsyncOpenAI
         import httpx
@@ -361,10 +363,11 @@ async def _generate_dalle_image(prompt: str, size: str = "1024x1024") -> str | N
             dl.raise_for_status()
             content_type = dl.headers.get("content-type", "image/png").split(";")[0]
             b64 = base64.b64encode(dl.content).decode()
+            logger.info("[DALL-E] image downloaded successfully size=%s", size)
             return f"data:{content_type};base64,{b64}"
 
     except Exception as exc:
-        logger.warning(f"DALL-E generation failed: {exc}")
+        logger.warning("[DALL-E] generation failed: %s", exc)
         return None
 
 

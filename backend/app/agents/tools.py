@@ -80,6 +80,7 @@ def ingest_product_from_image(
     price: float = 0.0,
     quantity: int = 0,
     sku: str = "",
+    weight_grams: int = 0,
     save: bool = False,
 ) -> dict:
     """
@@ -94,6 +95,7 @@ def ingest_product_from_image(
         price: Selling price (required when save=True)
         quantity: Stock quantity available (required when save=True)
         sku: Optional SKU / unique identifier
+        weight_grams: Product weight in grams (required when seller uses weight_based shipping)
         save: When True, saves the product; when False, returns extracted info only
 
     Returns:
@@ -135,6 +137,18 @@ def update_product_stock(product_id: str, delta: int) -> dict:
 
     Returns:
         Dict with new stock_qty and product name
+    """
+    return {"status": "stub", "message": "handled by _execute_tool"}
+
+
+@tool
+def get_shipping_method() -> dict:
+    """
+    Get the seller's current shipping method configuration.
+
+    Returns:
+        Dict with shipping_method (one of: flat_rate, weight_based, free_threshold, none)
+        and weight_required (bool) indicating whether products need a weight_grams value.
     """
     return {"status": "stub", "message": "handled by _execute_tool"}
 
@@ -292,6 +306,7 @@ PRODUCT_MANAGER_TOOLS = SHARED_TOOLS + [
     ingest_product_from_image,
     ingest_products_from_csv,
     update_product_stock,
+    get_shipping_method,
 ]
 MARKETER_TOOLS = SHARED_TOOLS + [
     search_catalog,

@@ -322,6 +322,7 @@ class ArtisanAgent:
                 price = args.get("price")
                 stock_qty = args.get("quantity") or args.get("stock_qty") or 0
                 sku = args.get("sku") or None
+                weight_grams = args.get("weight_grams") or None
                 do_save = args.get("save", False)
 
                 # --- Vision extraction step ---
@@ -412,6 +413,7 @@ class ArtisanAgent:
                     price=float(price) if price else None,
                     stock_qty=int(stock_qty),
                     sku=sku,
+                    weight_grams=int(weight_grams) if weight_grams else None,
                     image_url=prod_image_url,
                     image_data=None,
                 )
@@ -507,6 +509,23 @@ class ArtisanAgent:
                 logger.error(f"[get_brand_dna] failed: {exc}")
                 return {"error": str(exc)}
 
+        if tool_name == "get_shipping_method" and db is not None and tenant_id:
+            try:
+                from sqlalchemy import text as _text
+                result = await db.execute(
+                    _text("SELECT shipping_method FROM tenant_business_profile WHERE tenant_id = :tid"),
+                    {"tid": str(tenant_id)},
+                )
+                row = result.fetchone()
+                method = (row[0] if row else None) or "none"
+                return {
+                    "shipping_method": method,
+                    "weight_required": method == "weight_based",
+                }
+            except Exception as exc:
+                logger.error(f"[get_shipping_method] failed: {exc}")
+                return {"shipping_method": "none", "weight_required": False, "error": str(exc)}
+
         if tool_name == "update_product_stock" and db is not None and tenant_id:
             try:
                 from app.models.product import Product as _Product
@@ -546,10 +565,6 @@ class ArtisanAgent:
                 api_base = f"http://localhost:{getattr(_settings, 'port', 8000)}"
                 # Resolve internally via the service layer directly to avoid HTTP round-trip
                 from app.api.v1.marketing import (
-                    generate_social_post as _gen_post,
-                    generate_social_post_batch as _gen_batch,
-                    generate_flier as _gen_flier,
-                    SocialPostRequest, SocialPostBatchRequest, FlierRequest,
                     _get_brand, _get_product,
                 )
                 from app.models.brand import BrandDNA
@@ -761,6 +776,7 @@ class ArtisanAgent:
                         _build_flier_spec, _generate_dalle_image, _flier_dalle_prompt,
                         _analyze_product_image, _product_image,
                     )
+                    logger.info("[generate_flier_image] starting for product_id=%s", args.get("product_id"))
                     product = await _get_product(args.get("product_id", ""), uuid.UUID(tenant_id), db)
                     fmt = args.get("format", "square")
                     spec = _build_flier_spec(
